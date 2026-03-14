@@ -1,0 +1,56 @@
+import asyncio
+import os
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from .core.config import settings
+from .core.exceptions import ConversionError, conversion_error_handler, global_exception_handler
+from .api import routes
+from .services.task_manager import task_manager
+from .services.cleanup import run_cleanup_loop
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Ensure directories exist
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
+
+    # Start background tasks
+    task_manager.start()
+    cleanup_task = asyncio.create_task(run_cleanup_loop())
+
+    yield
+
+    # Shutdown logic
+    await task_manager.stop()
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan
+)
+
+# Set all CORS enabled origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # For production, configure this via settings
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Exception handlers
+app.add_exception_handler(ConversionError, conversion_error_handler)
+app.add_exception_handler(Exception, global_exception_handler)
+
+# Routers
+app.include_router(routes.router, prefix=settings.API_V1_STR)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
