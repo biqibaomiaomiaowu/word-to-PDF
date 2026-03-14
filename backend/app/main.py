@@ -1,6 +1,12 @@
 import asyncio
 import os
+import sys
 from contextlib import asynccontextmanager
+
+# On Windows, the default event loop policy (SelectorEventLoop) does not
+# support subprocesses. We must use ProactorEventLoop to run asyncio.create_subprocess_exec.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
