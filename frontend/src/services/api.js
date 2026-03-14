@@ -9,9 +9,10 @@ const apiClient = axios.create({
 
 export default {
   // Convert a Word file
-  convertFile(file, onUploadProgress) {
+  convertFile(file, removeAd = true, onUploadProgress) {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('remove_ad', removeAd)
 
     return apiClient.post('/convert', formData, {
       headers: {

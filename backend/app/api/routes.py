@@ -1,7 +1,7 @@
 import os
 import shutil
 import uuid
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Form
 from fastapi.responses import FileResponse
 from typing import Dict
 
@@ -18,7 +18,10 @@ async def health_check() -> Dict[str, str]:
     return {"status": "ok"}
 
 @router.post("/convert", response_model=TaskResponse, status_code=status.HTTP_202_ACCEPTED, summary="Upload a Word file for conversion")
-async def upload_for_conversion(file: UploadFile = File(...)):
+async def upload_for_conversion(
+    file: UploadFile = File(...),
+    remove_ad: bool = Form(True, description="Whether to detect and remove ads from the last page")
+):
     # 1. Validate file
     await validate_file(file)
 
@@ -36,7 +39,8 @@ async def upload_for_conversion(file: UploadFile = File(...)):
     # 3. Enqueue task
     task_id = await task_manager.enqueue_task(
         original_filename=file.filename,
-        input_filepath=input_filepath
+        input_filepath=input_filepath,
+        remove_ad=remove_ad
     )
 
     task_info = task_manager.get_task_status(task_id)

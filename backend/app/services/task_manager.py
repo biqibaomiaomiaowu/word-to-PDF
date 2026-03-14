@@ -8,6 +8,7 @@ from ..core.logger import logger
 from ..core.config import settings
 from .libreoffice import LibreOfficeService
 from ..models.schemas import TaskStatus, TaskInfo
+from ..utils.pdf_processor import detect_and_remove_ad
 
 class TaskManager:
     def __init__(self):
@@ -31,7 +32,7 @@ class TaskManager:
                 pass
             logger.info("Task manager stopped.")
 
-    async def enqueue_task(self, original_filename: str, input_filepath: str) -> str:
+    async def enqueue_task(self, original_filename: str, input_filepath: str, remove_ad: bool = True) -> str:
         """Enqueues a new conversion task and returns its task ID."""
         task_id = str(uuid.uuid4())
 
@@ -45,7 +46,8 @@ class TaskManager:
             status=TaskStatus.PENDING,
             created_at=datetime.now(timezone.utc),
             input_filepath=input_filepath,
-            output_dir=task_output_dir
+            output_dir=task_output_dir,
+            remove_ad=remove_ad
         )
 
         self.tasks[task_id] = task_info
@@ -89,6 +91,12 @@ class TaskManager:
                 input_path=task_info.input_filepath,
                 output_dir=task_info.output_dir
             )
+
+            if task_info.remove_ad:
+                try:
+                    detect_and_remove_ad(output_pdf_path)
+                except Exception as ad_err:
+                    logger.warning(f"Failed to remove ad for task {task_id}: {ad_err}")
 
             task_info.status = TaskStatus.COMPLETED
             task_info.completed_at = datetime.now(timezone.utc)

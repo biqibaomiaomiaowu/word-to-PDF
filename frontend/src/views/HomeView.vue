@@ -66,7 +66,7 @@ onUnmounted(() => {
   stopAllPolling()
 })
 
-const handleFilesSelected = async (files) => {
+const handleFilesSelected = async (files, removeAd) => {
   errorMessage.value = null
 
   // Create placeholders for uploading files
@@ -83,7 +83,7 @@ const handleFilesSelected = async (files) => {
   // Upload concurrently
   const uploadPromises = newTasks.map(async (localTask) => {
     try {
-      const response = await api.convertFile(localTask.file, (progressEvent) => {
+      const response = await api.convertFile(localTask.file, removeAd, (progressEvent) => {
         if (progressEvent.total) {
           const taskIndex = currentTasks.value.findIndex(t => t._localId === localTask._localId)
           if (taskIndex !== -1) {
