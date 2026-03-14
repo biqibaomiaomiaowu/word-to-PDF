@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 import subprocess
 from ..core.logger import logger
 from ..core.exceptions import ConversionError
@@ -17,17 +18,24 @@ class LibreOfficeService:
 
         os.makedirs(output_dir, exist_ok=True)
 
+        # Convert to absolute paths to prevent LibreOffice issues on Windows
+        abs_input_path = os.path.abspath(input_path)
+        abs_output_dir = os.path.abspath(output_dir)
+
+        # Determine the correct executable name based on the OS
+        executable = "soffice" if sys.platform.startswith("win") else "libreoffice"
+
         # Command line arguments for LibreOffice headless
         cmd = [
-            "libreoffice",
+            executable,
             "--headless",
             "--invisible",
             "--nologo",
             "--nodefault",
             "--norestore",
             "--convert-to", "pdf",
-            "--outdir", output_dir,
-            input_path
+            "--outdir", abs_output_dir,
+            abs_input_path
         ]
 
         logger.info(f"Executing conversion command: {' '.join(cmd)}")
