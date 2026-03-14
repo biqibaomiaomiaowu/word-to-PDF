@@ -67,7 +67,7 @@ cp .env.example .env
 ```
 可以根据需要编辑 `.env` 文件中的配置参数（如最大文件大小、超时时间、端口等）。
 
-### 2. 手动分步启动
+### 2. 手动分步启动 (Linux/macOS)
 
 **启动后端：**
 ```bash
@@ -87,15 +87,40 @@ npm run dev
 ```
 前端应用将在: `http://localhost:3000`
 
-### 3. 使用快捷脚本启动 (推荐)
+### 3. 手动分步启动 (Windows)
 
-项目内提供了一个便捷的启动脚本，可以一键启动前后端（依赖预先配置好的虚拟环境）：
+**启动后端：**
+```cmd
+cd backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
 
+**启动前端：**
+```cmd
+cd frontend
+npm install
+npm run dev
+```
+
+### 4. 使用快捷脚本启动 (推荐)
+
+项目内提供了便捷的启动脚本，可以一键启动前后端（依赖预先配置好的虚拟环境）：
+
+**Linux/macOS:**
 ```bash
 bash scripts/start_dev.sh
 ```
 
-### 4. 生产环境部署
+**Windows:**
+直接双击运行 `scripts\start_dev.bat` 文件，或在命令行执行：
+```cmd
+scripts\start_dev.bat
+```
+
+### 5. 生产环境部署
 1. 前端可使用 `npm run build` 生成静态文件，通过 Nginx 部署。
 2. 后端应使用 Gunicorn 配合 Uvicorn workers 运行：
    `gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker`
