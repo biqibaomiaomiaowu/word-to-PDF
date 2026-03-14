@@ -23,6 +23,12 @@ class TaskInfo(BaseModel):
     output_filepath: Optional[str] = None
     remove_ad: bool = True
 
+    # Ad removal fields
+    ad_removal_enabled: bool = True
+    ad_removed: bool = False
+    ad_remove_stage: Optional[str] = None
+    ad_remove_error: Optional[str] = None
+
 class TaskResponse(BaseModel):
     task_id: str
     original_filename: str
@@ -30,3 +36,9 @@ class TaskResponse(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+
+    # Ad removal fields
+    ad_removal_enabled: bool = True
+    ad_removed: bool = False
+    ad_remove_stage: Optional[str] = None
+    ad_remove_error: Optional[str] = None

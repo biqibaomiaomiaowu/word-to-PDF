@@ -86,28 +86,62 @@ class TaskManager:
         task_info.status = TaskStatus.PROCESSING
 
         try:
+            conversion_input_path = task_info.input_filepath
+            temp_cleaned_docx = None
+
+            task_info.ad_removal_enabled = task_info.remove_ad
+
+            # Stage 1: DOCX Pre-cleaning
+            if task_info.remove_ad:
+                from .docx_ad_cleaner import clean_trailing_ad_from_docx
+                from pathlib import Path
+
+                temp_cleaned_docx = os.path.join(settings.OUTPUT_DIR, f"{task_id}_cleaned.docx")
+                try:
+                    is_cleaned = clean_trailing_ad_from_docx(
+                        Path(task_info.input_filepath),
+                        Path(temp_cleaned_docx)
+                    )
+                    if is_cleaned:
+                        conversion_input_path = temp_cleaned_docx
+                        task_info.ad_removed = True
+                        task_info.ad_remove_stage = "docx"
+                except Exception as docx_err:
+                    logger.warning(f"DOCX pre-cleaning failed for task {task_id}: {docx_err}")
+                    task_info.ad_remove_error = f"DOCX Stage Error: {docx_err}"
+
             # Execute conversion
             output_pdf_path = await LibreOfficeService.convert_to_pdf(
-                input_path=task_info.input_filepath,
+                input_path=conversion_input_path,
                 output_dir=task_info.output_dir
             )
 
-            if task_info.remove_ad:
+            # Stage 2: PDF Fallback Cleaning
+            if task_info.remove_ad and not task_info.ad_removed:
                 try:
-                    detect_and_remove_ad(output_pdf_path)
+                    is_cleaned_pdf = detect_and_remove_ad(output_pdf_path)
+                    if is_cleaned_pdf:
+                        task_info.ad_removed = True
+                        task_info.ad_remove_stage = "pdf"
                 except Exception as ad_err:
-                    logger.warning(f"Failed to remove ad for task {task_id}: {ad_err}")
+                    logger.warning(f"Failed to remove ad in PDF stage for task {task_id}: {ad_err}")
+                    if not task_info.ad_remove_error:
+                        task_info.ad_remove_error = f"PDF Stage Error: {ad_err}"
+                    else:
+                        task_info.ad_remove_error += f" | PDF Stage Error: {ad_err}"
 
             task_info.status = TaskStatus.COMPLETED
             task_info.completed_at = datetime.now(timezone.utc)
             task_info.output_filepath = output_pdf_path
 
-            # Optionally clean up the input file after successful conversion
-            # We delete it to save space in temp_uploads
+            # Clean up the input files
             try:
-                os.remove(task_info.input_filepath)
+                if os.path.exists(task_info.input_filepath):
+                    os.remove(task_info.input_filepath)
+                if temp_cleaned_docx and os.path.exists(temp_cleaned_docx):
+                    os.remove(temp_cleaned_docx)
             except Exception as e:
-                logger.warning(f"Failed to remove input file {task_info.input_filepath}: {e}")
+                logger.warning(f"Failed to remove temp files for task {task_id}: {e}")
 
         except Exception as e:
             task_info.status = TaskStatus.FAILED

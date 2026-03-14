@@ -61,6 +61,19 @@ const handleDownload = () => {
       </span>
     </div>
 
+    <!-- Ad Removal Tags -->
+    <div v-if="task.status === 'completed' && task.ad_removal_enabled" class="mt-2 flex gap-2">
+      <span v-if="task.ad_removed && task.ad_remove_stage === 'docx'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+        去除广告(DOCX)
+      </span>
+      <span v-else-if="task.ad_removed && task.ad_remove_stage === 'pdf'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+        去除广告(PDF)
+      </span>
+      <span v-else class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">
+        未检测到广告
+      </span>
+    </div>
+
     <!-- Error message if any -->
     <div v-if="task.status === 'failed' && task.error_message" class="mt-4 p-3 bg-white/50 rounded-md text-sm">
       <p class="font-medium mb-1">错误信息：</p>
@@ -68,7 +81,7 @@ const handleDownload = () => {
     </div>
 
     <!-- Action Area -->
-    <div v-if="task.status === 'completed'" class="mt-5 flex justify-end">
+    <div v-if="task.status === 'completed'" class="mt-4 flex justify-end">
       <button
         @click="handleDownload"
         class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-5 rounded-lg shadow-sm transition-colors duration-150 flex items-center gap-2 text-sm"
