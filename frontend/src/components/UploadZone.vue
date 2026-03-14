@@ -4,6 +4,7 @@ import { ref } from 'vue'
 const emit = defineEmits(['files-selected'])
 const isDragging = ref(false)
 const fileInput = ref(null)
+const removeAd = ref(true)
 
 const handleDragOver = (e) => {
   e.preventDefault()
@@ -70,20 +71,21 @@ const validateAndEmit = (files) => {
   }
 
   if (validFiles.length > 0) {
-    emit('files-selected', validFiles)
+    emit('files-selected', validFiles, removeAd.value)
   }
 }
 </script>
 
 <template>
-  <div
-    class="w-full p-8 border-2 border-dashed rounded-xl transition-colors duration-200 cursor-pointer flex flex-col items-center justify-center text-center bg-white shadow-sm"
-    :class="isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'"
-    @dragover="handleDragOver"
-    @dragleave="handleDragLeave"
-    @drop="handleDrop"
-    @click="triggerFileInput"
-  >
+  <div class="flex flex-col gap-4">
+    <div
+      class="w-full p-8 border-2 border-dashed rounded-xl transition-colors duration-200 cursor-pointer flex flex-col items-center justify-center text-center bg-white shadow-sm relative"
+      :class="isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'"
+      @dragover="handleDragOver"
+      @dragleave="handleDragLeave"
+      @drop="handleDrop"
+      @click="triggerFileInput"
+    >
     <input
       type="file"
       ref="fileInput"
@@ -97,5 +99,20 @@ const validateAndEmit = (files) => {
     </svg>
     <h3 class="text-xl font-medium text-gray-700 mb-2">点击或拖拽多个文件到这里上传</h3>
     <p class="text-sm text-gray-500">支持批量上传 .doc / .docx (最多 20 个)，单文件最大 100MB</p>
+    </div>
+
+    <!-- Ad Removal Option -->
+    <div class="flex items-center gap-2 px-2">
+      <input
+        type="checkbox"
+        id="removeAdCheckbox"
+        v-model="removeAd"
+        class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+      >
+      <label for="removeAdCheckbox" class="text-sm font-medium text-gray-700 select-none">
+        智能去除末尾广告（默认开启）
+      </label>
+      <span class="text-xs text-gray-500 ml-1">仅检测最后一页底部区域，未识别到广告时不会修改文件</span>
+    </div>
   </div>
 </template>

@@ -1,0 +1,18 @@
+正在检查环境...
+警告: 未在 PATH 中找到 'libreoffice' 命令！后端转换可能失败。
+请确保已安装 LibreOffice 并将其添加至系统环境变量。
+正在启动 FastAPI 后端 (端口 8000)...
+scripts/start_dev.sh: line 17: venv/bin/activate: No such file or directory
+正在启动 Vite 前端 (端口 3000)...
+=========================================
+所有服务均已启动。
+前端地址: http://localhost:3000
+后端接口: http://localhost:8000/api
+按 Ctrl+C 停止所有服务
+=========================================
+INFO:     Started server process [3703]
+INFO:     Waiting for application startup.
+2026-03-14 16:24:04,862 - word2pdf - INFO - Task manager started with max concurrency: 1
+2026-03-14 16:24:04,862 - word2pdf - INFO - Starting cleanup loop. Retention: 3600 seconds.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)

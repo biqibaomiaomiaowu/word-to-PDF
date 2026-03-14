@@ -21,6 +21,7 @@ class TaskInfo(BaseModel):
     input_filepath: str
     output_dir: str
     output_filepath: Optional[str] = None
+    remove_ad: bool = True
 
 class TaskResponse(BaseModel):
     task_id: str
