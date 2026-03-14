@@ -7,82 +7,125 @@ import TaskStatus from '@/components/TaskStatus.vue'
 import HistoryList from '@/components/HistoryList.vue'
 
 const historyStore = useHistoryStore()
-const currentTask = ref(null)
-const isUploading = ref(false)
-const uploadProgress = ref(0)
+const currentTasks = ref([])
 const errorMessage = ref(null)
 
-let pollInterval = null
+const activePollings = new Map()
 
 const startPolling = (taskId) => {
-  stopPolling() // Ensure only one interval runs
+  if (activePollings.has(taskId)) return
 
-  pollInterval = setInterval(async () => {
+  const intervalId = setInterval(async () => {
     try {
       const response = await api.getTaskStatus(taskId)
       const task = response.data
 
       // Update local state
-      currentTask.value = task
+      const taskIndex = currentTasks.value.findIndex(t => t.task_id === taskId)
+      if (taskIndex !== -1) {
+        currentTasks.value[taskIndex] = task
+      }
 
       // Update history store
       historyStore.updateTaskStatus(taskId, task.status, task)
 
       // Stop polling if completed or failed
       if (['completed', 'failed'].includes(task.status)) {
-        stopPolling()
+        stopPolling(taskId)
       }
     } catch (err) {
       console.error('Polling error', err)
-      stopPolling()
-      errorMessage.value = '无法获取任务状态，可能任务已过期或服务出错。'
+      stopPolling(taskId)
+      // We don't want to overwrite the global error message for a single poll failure,
+      // but we can update the task status to failed visually.
+      const taskIndex = currentTasks.value.findIndex(t => t.task_id === taskId)
+      if (taskIndex !== -1) {
+        currentTasks.value[taskIndex].status = 'failed'
+        currentTasks.value[taskIndex].error_message = '无法获取任务状态，可能任务已过期或服务出错。'
+      }
     }
   }, 2000) // Poll every 2 seconds
+
+  activePollings.set(taskId, intervalId)
 }
 
-const stopPolling = () => {
-  if (pollInterval) {
-    clearInterval(pollInterval)
-    pollInterval = null
+const stopPolling = (taskId) => {
+  if (activePollings.has(taskId)) {
+    clearInterval(activePollings.get(taskId))
+    activePollings.delete(taskId)
+  }
+}
+
+const stopAllPolling = () => {
+  for (const taskId of activePollings.keys()) {
+    stopPolling(taskId)
   }
 }
 
 onUnmounted(() => {
-  stopPolling()
+  stopAllPolling()
 })
 
-const handleFileSelected = async (file) => {
-  // Reset state
+const handleFilesSelected = async (files) => {
   errorMessage.value = null
-  isUploading.value = true
-  uploadProgress.value = 0
-  currentTask.value = null
 
-  try {
-    const response = await api.convertFile(file, (progressEvent) => {
-      if (progressEvent.total) {
-        uploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+  // Create placeholders for uploading files
+  const newTasks = files.map((file, index) => ({
+    _localId: Date.now() + index, // temporary ID before we get real task_id
+    original_filename: file.name,
+    status: 'uploading',
+    uploadProgress: 0,
+    file: file // keep reference to file to upload it
+  }))
+
+  currentTasks.value = [...newTasks, ...currentTasks.value]
+
+  // Upload concurrently
+  const uploadPromises = newTasks.map(async (localTask) => {
+    try {
+      const response = await api.convertFile(localTask.file, (progressEvent) => {
+        if (progressEvent.total) {
+          const taskIndex = currentTasks.value.findIndex(t => t._localId === localTask._localId)
+          if (taskIndex !== -1) {
+            currentTasks.value[taskIndex].uploadProgress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          }
+        }
+      })
+
+      // File uploaded, task created
+      const task = response.data
+
+      // Replace placeholder with real task
+      const taskIndex = currentTasks.value.findIndex(t => t._localId === localTask._localId)
+      if (taskIndex !== -1) {
+        currentTasks.value[taskIndex] = task
       }
-    })
 
-    // File uploaded, task created
-    const task = response.data
-    currentTask.value = task
-    historyStore.addTask(task)
+      historyStore.addTask(task)
 
-    // Start polling for conversion progress
-    startPolling(task.task_id)
+      // Start polling for conversion progress
+      startPolling(task.task_id)
 
-  } catch (err) {
-    console.error('Upload error', err)
-    if (err.response && err.response.data && err.response.data.detail) {
-      errorMessage.value = `上传失败: ${err.response.data.detail}`
-    } else {
-      errorMessage.value = '上传失败，请检查网络或稍后重试。'
+    } catch (err) {
+      console.error('Upload error for file', localTask.file.name, err)
+      const taskIndex = currentTasks.value.findIndex(t => t._localId === localTask._localId)
+      if (taskIndex !== -1) {
+        currentTasks.value[taskIndex].status = 'failed'
+        if (err.response && err.response.data && err.response.data.detail) {
+          currentTasks.value[taskIndex].error_message = `上传失败: ${err.response.data.detail}`
+        } else {
+          currentTasks.value[taskIndex].error_message = '上传失败，请检查网络或稍后重试。'
+        }
+      }
     }
-  } finally {
-    isUploading.value = false
-  }
+  })
+
+  await Promise.allSettled(uploadPromises)
+}
+
+const clearCurrentTasks = () => {
+  stopAllPolling()
+  currentTasks.value = []
 }
 </script>
 
@@ -92,11 +135,11 @@ const handleFileSelected = async (file) => {
     <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 relative">
       <!-- Back button when task is present to do another conversion -->
       <button
-        v-if="currentTask && ['completed', 'failed'].includes(currentTask.status)"
-        @click="currentTask = null"
-        class="absolute top-4 right-4 text-sm text-gray-500 hover:text-blue-600 font-medium"
+        v-if="currentTasks.length > 0 && currentTasks.every(t => ['completed', 'failed'].includes(t.status))"
+        @click="clearCurrentTasks"
+        class="absolute top-4 right-4 text-sm text-gray-500 hover:text-blue-600 font-medium z-10"
       >
-        转换新文件 →
+        清空并转换新文件 →
       </button>
 
       <!-- Upload Error -->
@@ -106,26 +149,36 @@ const handleFileSelected = async (file) => {
         <button @click="errorMessage = null" class="ml-auto text-red-400 hover:text-red-700 font-bold p-1">×</button>
       </div>
 
-      <!-- Current Task Status -->
-      <TaskStatus
-        v-if="currentTask"
-        :task="currentTask"
-        class="mb-6"
-      />
+      <template v-if="currentTasks.length > 0">
+        <div class="flex flex-col gap-4 mb-6 mt-4">
+          <div v-for="task in currentTasks" :key="task.task_id || task._localId" class="relative">
+             <!-- Uploading State for specific task -->
+            <div v-if="task.status === 'uploading'" class="w-full flex flex-col p-6 bg-gray-50 rounded-xl border border-gray-100">
+              <p class="text-gray-700 font-medium mb-2 truncate" :title="task.original_filename">{{ task.original_filename }} - 正在上传...</p>
+              <div class="w-full bg-gray-200 rounded-full h-2.5 mb-2 overflow-hidden relative">
+                <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out absolute left-0 top-0" :style="`width: ${task.uploadProgress}%`"></div>
+              </div>
+              <p class="text-xs text-gray-500">{{ task.uploadProgress }}%</p>
+            </div>
 
-      <!-- Uploading State -->
-      <div v-else-if="isUploading" class="w-full flex flex-col items-center justify-center p-8 bg-gray-50 rounded-xl border border-gray-100 h-48">
-        <p class="text-gray-600 font-medium mb-4">正在上传文件...</p>
-        <div class="w-full max-w-sm bg-gray-200 rounded-full h-2.5 mb-2 overflow-hidden relative">
-          <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out absolute left-0 top-0" :style="`width: ${uploadProgress}%`"></div>
+            <!-- Current Task Status -->
+            <TaskStatus
+              v-else
+              :task="task"
+            />
+          </div>
         </div>
-        <p class="text-xs text-gray-500">{{ uploadProgress }}%</p>
-      </div>
 
-      <!-- Upload Zone -->
+        <!-- Append new files to existing list -->
+        <UploadZone
+          @files-selected="handleFilesSelected"
+        />
+      </template>
+
+      <!-- Upload Zone when empty -->
       <UploadZone
         v-else
-        @file-selected="handleFileSelected"
+        @files-selected="handleFilesSelected"
       />
 
       <!-- Helper Text below active components -->
