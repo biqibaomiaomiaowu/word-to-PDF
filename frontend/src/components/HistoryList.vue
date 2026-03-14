@@ -66,13 +66,26 @@ const handleRemove = (taskId) => {
               <span class="text-xs font-semibold" :class="statusColorText(item.status)">
                 {{ statusLabel(item.status) }}
               </span>
-              <span class="text-xs text-gray-400">
+
+              <template v-if="item.status === 'completed' && item.ad_removal_enabled">
+                <span v-if="item.ad_removed && item.ad_remove_stage === 'docx'" class="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 border border-green-100">
+                  去除广告(DOCX)
+                </span>
+                <span v-else-if="item.ad_removed && item.ad_remove_stage === 'pdf'" class="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 border border-green-100">
+                  去除广告(PDF)
+                </span>
+                <span v-else class="text-[10px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-500 border border-gray-100">
+                  未检测到广告
+                </span>
+              </template>
+
+              <span class="text-xs text-gray-400 ml-auto">
                 {{ formatTime(item.created_at) }}
               </span>
             </div>
           </div>
 
-          <div class="flex items-center space-x-2">
+          <div class="flex items-center space-x-2 pl-4">
             <!-- Retry download for completed files (note backend clears files after 1hr default) -->
             <button
               v-if="item.status === 'completed'"
