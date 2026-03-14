@@ -4,7 +4,9 @@ import { ref } from 'vue'
 const emit = defineEmits(['files-selected'])
 const isDragging = ref(false)
 const fileInput = ref(null)
-const removeAd = ref(true)
+// 从 Vite 环境变量中读取是否默认开启，如果没有配置，则默认 true
+const defaultRemoveAd = import.meta.env.VITE_DEFAULT_REMOVE_AD !== 'false'
+const removeAd = ref(defaultRemoveAd)
 
 const handleDragOver = (e) => {
   e.preventDefault()
