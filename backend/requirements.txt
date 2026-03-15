@@ -10,6 +10,4 @@ pytest-asyncio
 PyMuPDF
 python-docx
 pdf2docx
-paddlepaddle
-paddleocr
 opencv-python-headless
