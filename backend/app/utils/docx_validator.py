@@ -60,10 +60,22 @@ def validate_docx_quality(filepath: str) -> Dict[str, Any]:
 
     table_count = len(doc.tables)
 
+    # Character cleanliness metrics
+    character_clean_score = 1.0
+    character_anomalies = 0
+    for p in paragraphs:
+        text = p.text.strip()
+        # Look for duplicate characters sequentially, like "概概率" -> "概率" or spaces
+        # Very rough metric
+        # Exclude common correct double chars: 看看, 常常, 谢谢, 仅仅, 常常, 渐渐, etc
+        if re.search(r'(?!(看|常|谢|仅|渐|真|很|非|大|小|多|少|高|低|长|短|快|慢))([\u4e00-\u9fa5])\2{1,}', text) or "  " in text:
+            character_anomalies += 1
+
     # Calculate scores (0.0 to 1.0)
     if num_text_paras > 0:
         math_layout_score = max(0.0, 1.0 - (math_anomalies / (num_text_paras * 0.5)))
         spacing_score = max(0.0, 1.0 - (spacing_anomalies / (num_text_paras * 0.5)))
+        character_clean_score = max(0.0, 1.0 - (character_anomalies / (num_text_paras * 0.5)))
         heading_structure_score = min(1.0, headings / 5.0) # Assume 5+ headings is good structure
 
     logger.info(
@@ -72,15 +84,20 @@ def validate_docx_quality(filepath: str) -> Dict[str, Any]:
         f"{textbox_count} textboxes, {behind_doc_count} behindDoc."
     )
 
+    paragraph_recovery_score = 1.0 - (short_para_count / num_text_paras) if num_text_paras > 0 else 0
+    table_score = min(1.0, table_count / 1.0) if table_count > 0 else 0.0
+
     # Construct report
     report = {
         "visible_text_ok": num_text_paras > 5,
-        "paragraph_recovery_score": 1.0 - (short_para_count / num_text_paras) if num_text_paras > 0 else 0,
-        "table_recovery_score": table_count,
-        "math_layout_score": math_layout_score,
-        "spacing_score": spacing_score,
-        "heading_structure_score": heading_structure_score,
-        "warnings": []
+        "paragraph_recovery_score": round(paragraph_recovery_score, 2),
+        "table_recovery_score": round(table_score, 2),
+        "math_expression_score": round(math_layout_score, 2),
+        "spacing_score": round(spacing_score, 2),
+        "character_cleanliness_score": round(character_clean_score, 2),
+        "heading_structure_score": round(heading_structure_score, 2),
+        "warnings": [],
+        "quality_warnings": []
     }
 
     # Evaluate final quality
@@ -91,22 +108,31 @@ def validate_docx_quality(filepath: str) -> Dict[str, Any]:
     elif num_text_paras < 3 and not table_count:
         report["final_quality_level"] = "poor"
         report["warnings"].append("提取出的有效文本极少，可能是一个图片型 PDF。")
-    elif report["paragraph_recovery_score"] < 0.4:
-        report["final_quality_level"] = "acceptable"
-        report["warnings"].append("段落结构恢复较差，存在较多换行断裂。")
-    elif report["math_layout_score"] < 0.6:
-        report["final_quality_level"] = "acceptable"
-        report["warnings"].append("部分数学公式、分数或区间可能存在排版粘连或断裂。")
-    elif report["spacing_score"] < 0.7:
-        report["final_quality_level"] = "acceptable"
-        report["warnings"].append("中英文混排、特殊符号间距存在一定异常。")
-    elif report["table_recovery_score"] == 0 and num_text_paras > 50:
-         # Large document, no tables - might be ok, but note it
-         report["final_quality_level"] = "good"
-         if "表" in " ".join(text_paras):
-             # Just a heuristic to guess if there should be tables
-             pass
     else:
-        report["final_quality_level"] = "good"
+        # Check specific metrics to append warnings to `quality_warnings`
+        if report["paragraph_recovery_score"] < 0.8:
+            report["quality_warnings"].append("段落结构恢复较差，存在较多换行断裂。")
+        if report["math_expression_score"] < 0.8:
+            report["quality_warnings"].append("部分数学公式、分数或区间可能存在排版粘连或断裂。")
+        if report["spacing_score"] < 0.8:
+            report["quality_warnings"].append("中英文混排、特殊符号间距存在一定异常。")
+        if report["character_cleanliness_score"] < 0.8:
+            report["quality_warnings"].append("存在字符重复或过多无效空格。")
+        if report["table_recovery_score"] == 0 and "表" in " ".join(text_paras):
+            report["quality_warnings"].append("文档可能包含表格，但未能完全恢复为标准 Word 表格。")
+
+        if len(report["quality_warnings"]) >= 3 or report["paragraph_recovery_score"] < 0.5:
+            report["final_quality_level"] = "poor"
+        elif len(report["quality_warnings"]) > 0:
+            report["final_quality_level"] = "acceptable"
+        else:
+            report["final_quality_level"] = "good"
+
+        report["warnings"].extend(report["quality_warnings"]) # for backward compatibility
+
+    # Log detailed quality report
+    logger.info(f"Quality Report: level={report['final_quality_level']}, para={report['paragraph_recovery_score']}, "
+                f"table={report['table_recovery_score']}, math={report['math_expression_score']}, "
+                f"spacing={report['spacing_score']}, clean={report['character_cleanliness_score']}")
 
     return report

@@ -37,6 +37,13 @@ class TaskInfo(BaseModel):
 
     # Quality info (for PDF to Word)
     warnings: Optional[list[str]] = None
+    quality_warnings: Optional[list[str]] = None
+    final_quality_level: Optional[str] = None
+    paragraph_recovery_score: Optional[float] = None
+    table_recovery_score: Optional[float] = None
+    math_expression_score: Optional[float] = None
+    spacing_score: Optional[float] = None
+    character_cleanliness_score: Optional[float] = None
 
 class TaskResponse(BaseModel):
     task_id: str
@@ -56,3 +63,10 @@ class TaskResponse(BaseModel):
 
     # Quality info
     warnings: Optional[list[str]] = None
+    quality_warnings: Optional[list[str]] = None
+    final_quality_level: Optional[str] = None
+    paragraph_recovery_score: Optional[float] = None
+    table_recovery_score: Optional[float] = None
+    math_expression_score: Optional[float] = None
+    spacing_score: Optional[float] = None
+    character_cleanliness_score: Optional[float] = None

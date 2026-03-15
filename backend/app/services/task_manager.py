@@ -164,6 +164,16 @@ class TaskManager:
 
                 if quality_report.get("warnings"):
                     task_info.warnings = quality_report["warnings"]
+                if quality_report.get("quality_warnings"):
+                    task_info.quality_warnings = quality_report["quality_warnings"]
+
+                # Pass detailed quality scores
+                task_info.final_quality_level = quality_report.get("final_quality_level")
+                task_info.paragraph_recovery_score = quality_report.get("paragraph_recovery_score")
+                task_info.table_recovery_score = quality_report.get("table_recovery_score")
+                task_info.math_expression_score = quality_report.get("math_expression_score")
+                task_info.spacing_score = quality_report.get("spacing_score")
+                task_info.character_cleanliness_score = quality_report.get("character_cleanliness_score")
 
             task_info.status = TaskStatus.COMPLETED
             task_info.completed_at = datetime.now(timezone.utc)
