@@ -57,16 +57,14 @@ try:
     import docx
     import cv2
     import numpy as np
-    from paddleocr import PaddleOCR
-    # Check instantiation with minimally impacting parameters
-    import os
-    use_gpu = False
-    try:
-        use_gpu = paddle.device.is_compiled_with_cuda() and paddle.device.get_device() != 'cpu'
-    except:
-        pass
-    _ = PaddleOCR(use_angle_cls=False, lang="ch", use_gpu=use_gpu, show_log=False)
-    print("ALL_GOOD")
+    import paddleocr
+    
+    # [纯本地检查]：只验证核心库能否被正常导入，以及检查版本
+    # 不在这里进行 PaddleOCR 对象的实例化，彻底防止因为模型没下好导致的堵塞、网络下载和脏数据缓存
+    paddle_ver = getattr(paddle, '__version__', 'unknown')
+    ocr_ver = getattr(paddleocr, '__version__', 'unknown')
+    
+    print(f"ALL_GOOD|Paddle:{paddle_ver}|OCR:{ocr_ver}")
 except Exception as e:
     print(f"IMPORT_ERROR: {traceback.format_exc()}")
     sys.exit(1)
@@ -77,7 +75,7 @@ except Exception as e:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=15
+            timeout=10 # 脱离了模型下载，现在只需要极短的超时
         )
         if result.returncode == 0 and "ALL_GOOD" in result.stdout:
             _PADDLE_AVAILABLE_CACHE = True

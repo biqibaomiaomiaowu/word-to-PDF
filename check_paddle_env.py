@@ -74,49 +74,121 @@ print("OK")
         print(f"  ❌ 探测子进程失败: {e}")
         return
 
-    # 4. 检查 PaddleOCR 3.x 实例化及 GPU 状态
-    print("\n[4] 检查 PaddleOCR 3.4.0 实例化及 GPU 状态 (这可能需要几秒到十几秒)")
+    # 4. 深度检查（可选）
+    is_deep = "--deep" in sys.argv
+    
+    if not is_deep:
+        print("\n[4] 深度检查: 已跳过 (当前为纯本地依赖检查)")
+        print("  💡 提示: 若要实际实例化引擎、检测模型可用性并自动下载缺失模型，请在此命令后加上 `--deep` 参数。")
+        print("     示例: python check_paddle_env.py --deep")
+        print("\n" + "="*50)
+        print("本地自检完成！(基础环境一切正常)")
+        print("="*50)
+        return
+
+    print("\n[4] 深度检查 PaddleOCR 3.4.0 实例化及 GPU 状态 (可能会下载官方模型，请耐心等待)")
+    
+    # 动态获取项目根目录，避免中文路径问题
+    workspace_root = os.path.dirname(os.path.abspath(__file__))
+    paddle_home = os.path.join(workspace_root, ".paddle_models").replace("\\", "\\\\")
+    paddlex_home = os.path.join(workspace_root, ".paddlex_models").replace("\\", "\\\\")
+    
     pp_script = """
 import sys
+import os
 import traceback
+
+# 强制注入自定义路径，避开 C盘/Users/中文用户名 造成的 C++ 路径读取截断 Bug
+os.environ["PADDLE_HOME"] = "%s"
+os.environ["PADDLEX_HOME"] = "%s"
+# 彻底欺骗 Python 的 os.path.expanduser("~") 避免老版本写死 C盘
+os.environ["USERPROFILE"] = "%s"
+os.environ["HOME"] = "%s"
+
+def safe_print(msg):
+""" % (paddle_home, paddlex_home, workspace_root.replace("\\", "\\\\"), workspace_root.replace("\\", "\\\\"))
+
+    pp_script += """
+    # 强制将我们的标记写入真正的 stdout 并且即时刷新
+    sys.__stdout__.write(msg + '\\n')
+    sys.__stdout__.flush()
+
 try:
     import paddle
     import paddleocr
     from paddleocr import PaddleOCR
-    print(f"INFO|PaddleOCR Version: {paddleocr.__version__}")
-    
+    safe_print(f"INFO|PaddleOCR Version: {paddleocr.__version__}")
+
     use_gpu = False
     try:
         use_gpu = paddle.device.is_compiled_with_cuda() and paddle.device.get_device() != 'cpu'
-    except:
-        pass
-        
-    engine = PaddleOCR(show_log=False, lang='ch', use_gpu=use_gpu)
-    print(f"SUCCESS|USE_GPU={use_gpu}")
+    except: pass
+    device_str = 'gpu' if use_gpu else 'cpu'
+
+    try:
+        if getattr(paddleocr, '__version__', '').startswith('3.'):      
+            engine = PaddleOCR(lang='ch', device=device_str, use_doc_orientation_classify=False, use_textline_orientation=False, use_doc_unwarping=False, text_detection_model_name='PP-OCRv4_server_det', text_recognition_model_name='PP-OCRv4_server_rec')
+        else:
+            engine = PaddleOCR(lang='ch', use_gpu=use_gpu, show_log=False)
+        safe_print(f"ENGINE_INIT_OK|USE_GPU={use_gpu}")
+    except ValueError as e:
+        if 'Unknown argument' in str(e):
+            safe_print("ENGINE_INIT_FAIL|PARAM_INCOMPATIBLE|参数不兼容。检测到传递了旧版参数。详情: " + str(e))
+        else:
+            safe_print("ENGINE_INIT_FAIL|VALUE_ERROR|" + str(e))
+    except Exception as e:
+        err_str = str(e).replace('\\n', '  ')
+        if 'inference.json' in err_str or 'inference.yml' in err_str:   
+            s = f"ENGINE_INIT_FAIL|MODEL_CORRUPTED|模型未下载完整 或 模型目录结构不匹配 (找不到 inference 配置文件)。  --> [修复建议]: 请删除当前配置的新缓存目录然后重试！  --> [详情]: {err_str}"
+            safe_print(s)
+        else:
+            safe_print(f"ENGINE_INIT_FAIL|UNKNOWN|{err_str}  Traceback: {traceback.format_exc().replace('\\n', '  ')}")
+
 except Exception as e:
-    print("FAILED|\\n" + traceback.format_exc())
+    safe_print(f"ENGINE_INIT_FAIL|INIT|{traceback.format_exc().replace('\\n', '  ')}")
+sys.exit(0)
 """
     try:
-        res = subprocess.run([python_exe, "-c", pp_script], capture_output=True, text=True, timeout=30)
-        out = res.stdout.strip()
-        
-        last_line = out.split("\\n")[-1] if out else ""
-        if "SUCCESS" in out:
-            print("  ✅ PaddleOCR 3.x 实例化成功！")
-            if "USE_GPU=True" in out:
-                print("  ✅ GPU 硬件加速已 [开启]")
-            else:
-                print("  ⚠️ GPU 硬件加速未开启 (运行模式: CPU)。如果是带独立显卡的机器，建议安装 paddlepaddle-gpu 加速。")
+        res = subprocess.run([python_exe, "-c", pp_script], capture_output=True, text=True, timeout=300)
+        out = res.stdout
+        err = res.stderr
+
+        # 我们只需判断是否包含 ENGINE_INIT_OK
+        if "ENGINE_INIT_OK|" in out or "ENGINE_INIT_OK|" in err:
+            gpu_state = "开启" if "USE_GPU=True" in out or "USE_GPU=True" in err else "未开启 (CPU模式)"
+            print("  ✅ 深度自检成功！(PaddleOCR 实例化正常)")
+            print(f"  👉 GPU 加速状态: {gpu_state}")
+            print(f"  💡 (提示: 子进程返回了 {res.returncode}, 即使 stderr 有大量警告/日志，也被认定为成功)")
+            # 只有在明确失败或者有特别长的异常时才打印 stderr
         else:
-            print(f"  ❌ PaddleOCR 实例化失败\\n{out}\\n{res.stderr}")
+            print(f"  ❌ 深度自检失败:")
+            
+            # 解析到底是哪种失败
+            found_marker = False
+            for line in (out + "\n" + err).splitlines():
+                if "ENGINE_INIT_FAIL|" in line:
+                    found_marker = True
+                    parts = line.split("|", 2)
+                    err_type = parts[1] if len(parts) > 1 else "未分类"
+                    err_detail = parts[2] if len(parts) > 2 else "未知"
+                    print(f"     👉 [{err_type}] 真实抛出的异常: {err_detail}")
+            
+            if not found_marker:
+                print("     👉 [CRASH] 没有捕获到明确的 Python 异常标记，可能是底层 C++ 崩溃、内存不足或强行退出。")
+                print(f"     [子进程退出码]: {res.returncode}")
+                if err.strip():
+                    print(f"\n  [标准错误流内容 (stderr)]:\n{err.strip()}")
+                if out.strip():
+                    print(f"\n  [标准输出流内容 (stdout)]:\n{out.strip()}")
+
     except subprocess.TimeoutExpired:
-        print("  ❌ PaddleOCR 实例化超时 (超过30秒)，这通常是因为缺少底层动态链接库或内存不足。")
+        print("  ❌ 深度自检超时 (超过5分钟)。模型可能在艰难下载中，或进程卡死。")
     except Exception as e:
         print(f"  ❌ 探测异常: {e}")
 
     print("\n" + "="*50)
-    print("自检完成！")
+    print("深度自检完成！")
     print("="*50)
-
+    
 if __name__ == "__main__":
     run_self_check()

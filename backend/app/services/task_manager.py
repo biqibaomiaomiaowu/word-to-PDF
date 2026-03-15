@@ -199,7 +199,9 @@ class TaskManager:
                     output_filepath, quality_report = await perform_conversion(converter, conversion_input_path, task_info.output_dir)
 
                     # Limited fallback mechanism for Paddle
-                    if converter == 'paddle' and quality_report.get("final_quality_level") in ["failed", "poor"]:
+                    # Paddle 3.x OCR 模式目前主要提取文本，经常会被打上 "poor" 标签（因为缺少表格等特征）。
+                    # 为了防止用户强制选择的引擎被回退，此处只在 "failed" 时进行回退。
+                    if converter == 'paddle' and quality_report.get("final_quality_level") in ["failed"]:
                         logger.warning(f"Paddle conversion produced poor quality or failed. Attempting fallback to pdf2docx for task {task_id}")
                         task_info.fallback_attempted = True
                         task_info.fallback_reason = "quality_poor_or_failed"
