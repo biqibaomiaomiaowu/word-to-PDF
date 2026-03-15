@@ -1,6 +1,12 @@
-# 本地 Word 转 PDF 转换系统
+# 本地 Word 转 PDF & PDF 转 Word 转换系统
 
-这是一个完全本地运行、不依赖云端 API 的 Word 转 PDF 转换工具。后端采用 Python FastAPI 驱动 LibreOffice Headless 实现稳定的本地转换，前端采用 Vue 3 + Vite 构建现代化交互界面。
+这是一个完全本地运行、不依赖云端 API 的文档转换工具，支持 Word 转 PDF 以及 PDF 转 Word 双向转换。后端采用 Python FastAPI 驱动 LibreOffice Headless 实现稳定的本地转换，前端采用 Vue 3 + Vite 构建现代化交互界面。
+
+### 关于 PDF 转 Word 的质量说明与局限性
+本项目使用 LibreOffice 的 `writer_pdf_import` 滤镜进行 PDF 到 Word (DOCX) 的转换。
+* **高风险结构拦截**: 在处理含有复杂排版、背景图形或特定 PDF 导出格式的文件时，LibreOffice 倾向于生成绝对定位的文本框或将内容放在带有 `behindDoc` 属性的锚点中，而不是流式的正文段落。
+* **伪成功防范**: 这类文件在 Microsoft Word 中打开时往往“看起来是空白的”。本系统已在后端集成 `python-docx` 结构校验。当检测到生成的 DOCX 缺乏正常文本流且含有大量绝对定位对象时，会主动拦截为“转换失败”，避免向用户交付不可用的空白文档。
+* **建议**: 对于此类被拦截的复杂 PDF，建议使用专业的商业 PDF 转换工具（如 Adobe Acrobat, Solid Documents），因为它们具备更强大的版面分析与重构（OCR/Layout Analysis）能力。
 
 ## 核心特性
 
