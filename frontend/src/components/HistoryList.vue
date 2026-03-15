@@ -71,12 +71,24 @@ const handleRemove = (taskId) => {
                 {{ statusLabel(item.status) }}
               </span>
 
-              <template v-if="item.status === 'completed' && item.ad_removal_enabled && item.conversion_type === 'word_to_pdf'">
+              <template v-if="item.status === 'completed' && item.conversion_type === 'pdf_to_word'">
+                <span v-if="item.converter_used === 'paddle'" class="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-100 whitespace-nowrap">
+                  复杂版面(Paddle)
+                </span>
+                <span v-else-if="item.converter_used === 'pdf2docx'" class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap">
+                  标准文本(pdf2docx)
+                </span>
+              </template>
+
+              <template v-if="item.status === 'completed' && item.ad_removal_enabled">
                 <span v-if="item.ad_removed && item.ad_remove_stage === 'docx'" class="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 border border-green-100">
                   去除广告(DOCX)
                 </span>
                 <span v-else-if="item.ad_removed && item.ad_remove_stage === 'pdf'" class="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 border border-green-100">
                   去除广告(PDF)
+                </span>
+                <span v-else-if="item.ad_removed && item.ad_remove_stage === 'pdf_pre_conversion'" class="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 border border-green-100">
+                  去除广告(预处理)
                 </span>
                 <span v-else class="text-[10px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-500 border border-gray-100">
                   未检测到广告

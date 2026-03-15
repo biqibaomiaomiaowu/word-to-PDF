@@ -61,6 +61,20 @@ const handleDownload = () => {
       </span>
     </div>
 
+    <!-- Route Labels (PDF to Word) -->
+    <div v-if="task.status === 'completed' && task.conversion_type === 'pdf_to_word'" class="mt-2 flex gap-2">
+      <span v-if="task.converter_used === 'paddle'" class="inline-flex items-center rounded-md bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 ring-1 ring-inset ring-purple-600/20">
+        复杂版面引擎 (Paddle)
+      </span>
+      <span v-else-if="task.converter_used === 'pdf2docx'" class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20">
+        标准文本引擎 (pdf2docx)
+      </span>
+
+      <span v-if="task.fallback_attempted" class="inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-600/20">
+        发生降级回退
+      </span>
+    </div>
+
     <!-- Ad Removal Tags -->
     <div v-if="task.status === 'completed' && task.ad_removal_enabled" class="mt-2 flex gap-2">
       <span v-if="task.ad_removed && task.ad_remove_stage === 'docx'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
@@ -68,6 +82,9 @@ const handleDownload = () => {
       </span>
       <span v-else-if="task.ad_removed && task.ad_remove_stage === 'pdf'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
         去除广告(PDF)
+      </span>
+      <span v-else-if="task.ad_removed && task.ad_remove_stage === 'pdf_pre_conversion'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+        去除广告(预处理)
       </span>
       <span v-else class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">
         未检测到广告
