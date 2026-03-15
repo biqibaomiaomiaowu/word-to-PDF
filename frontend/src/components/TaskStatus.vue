@@ -74,6 +74,19 @@ const handleDownload = () => {
       </span>
     </div>
 
+    <!-- Quality Labels (PDF to Word) -->
+    <div v-if="task.status === 'completed' && task.conversion_type === 'pdf_to_word' && task.final_quality_level" class="mt-2 flex gap-2">
+      <span v-if="task.final_quality_level === 'good'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+        转换质量：良好
+      </span>
+      <span v-else-if="task.final_quality_level === 'acceptable'" class="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 ring-1 ring-inset ring-yellow-600/20">
+        转换质量：可接受
+      </span>
+      <span v-else-if="task.final_quality_level === 'poor'" class="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">
+        转换质量：较差
+      </span>
+    </div>
+
     <!-- Error message if any -->
     <div v-if="task.status === 'failed' && task.error_message" class="mt-4 p-3 bg-white/50 rounded-md text-sm">
       <p class="font-medium mb-1">错误信息：</p>
@@ -81,7 +94,16 @@ const handleDownload = () => {
     </div>
 
     <!-- Quality Warnings if any (Completed with Warnings) -->
-    <div v-if="task.status === 'completed' && task.warnings && task.warnings.length > 0" class="mt-4 p-3 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-md text-sm flex flex-col gap-1">
+    <div v-if="task.status === 'completed' && task.quality_warnings && task.quality_warnings.length > 0" class="mt-4 p-3 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-md text-sm flex flex-col gap-1">
+      <p class="font-bold mb-1 flex items-center gap-1">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+        质量提示：
+      </p>
+      <ul class="list-disc pl-5">
+        <li v-for="(warning, index) in task.quality_warnings" :key="index">{{ warning }}</li>
+      </ul>
+    </div>
+    <div v-else-if="task.status === 'completed' && task.warnings && task.warnings.length > 0" class="mt-4 p-3 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-md text-sm flex flex-col gap-1">
       <p class="font-bold mb-1 flex items-center gap-1">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
         质量提示：

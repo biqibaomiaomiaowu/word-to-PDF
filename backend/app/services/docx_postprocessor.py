@@ -15,22 +15,77 @@ def is_heading_or_list(text: str) -> bool:
     text = text.strip()
     if not text:
         return False
-    # Matches A., B., A、, B、, (1), ①, 例1, 【知识点】, etc.
+    # Added robust patterns as requested
     patterns = [
-        r'^[A-Z][\.\u3001]',
-        r'^\(\d+\)',
-        r'^[\u2460-\u2473]', # ①-⑳
-        r'^例\s*\d+',
-        r'^变式\s*\d+',
-        r'^【.*?】',
-        r'^\d+[\.\u3001]'
+        r'^\d+[\.\u3001]',                # 1. 2. 3. 1、 2、
+        r'^\(\d+\)',                      # (1) (2)
+        r'^[\u2460-\u2473]',              # ①-⑳
+        r'^[A-D][\.\u3001\uff0e]',        # A. B. C. D. A．B．C．D．
+        r'^(专题|知识点|题型|例|变式|解|分析)\s*\d*', # Headings like 专题, 知识点, 例1, 解
+        r'^【.*?】',                       # 【考点】
+        r'^如图所示',                        # 如图所示
+        r'^解：',                         # 解：
+        r'^故答案为',                       # 故答案为
+        r'^所以',                         # 所以
+        r'^\$\$.*?\$\$',                  # obvious isolated math block
+        r'^\\\[.*?\\\]'                   # obvious isolated math block
     ]
     for p in patterns:
         if re.match(p, text):
             return True
     return False
 
+def should_force_merge(t1: str, t2: str) -> bool:
+    """Check for strong signals that two lines should be merged."""
+    # Previous line ends with math operator or open bracket
+    if re.search(r'([\+\-\*\/\=\(\[\{,，、]|1/)$', t1):
+        return True
+    # Previous line ends with incomplete fraction/interval and next starts with rest
+    if re.search(r'\d+\s*/$', t1) and re.match(r'^\s*\d+', t2):
+         return True
+    # English word broken
+    if re.search(r'[A-Za-z\-]$', t1) and re.match(r'^[A-Za-z\-]', t2):
+         return True
+    return False
+
+def clean_repeated_chars(text: str) -> str:
+    """Cleans obviously repeated characters/words like '概概率'"""
+    # Fix repeated Chinese chars (2 or more identical Chinese chars)
+    # Be careful: some are valid like "看看", "常常". We limit to a small blacklist of common errors.
+    text = re.sub(r'(概率|频数|频率|长度|高度)\1+', r'\1', text)
+    text = re.sub(r'概概率', '概率', text)
+    text = re.sub(r'频频数', '频数', text)
+    text = re.sub(r'高高度', '高度', text)
+    text = re.sub(r'长长度', '长度', text)
+    return text
+
 def fix_chinese_english_spacing(text: str) -> str:
+    # Character level cleaning first
+    text = clean_repeated_chars(text)
+
+    # Fix English word gluing commonly found in OCR/PDF parsing
+    # e.g., "Youstandonthe" -> we won't fix ALL English words without a dictionary,
+    # but we can fix very common disjoints if we use simple rules,
+    # or rely on regex spacing.
+    # To avoid heavy NLP, we just fix space around punctuation and some basic patterns.
+
+    # Simple fix for lowercase followed by uppercase (camelCase that shouldn't be)
+    text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
+
+    # Simple fix for common words glued
+    common_words = ['the', 'and', 'of', 'to', 'a', 'in', 'is', 'you', 'that', 'it', 'he', 'was', 'for', 'on', 'are', 'as', 'with', 'his', 'they', 'I', 'at', 'be', 'this', 'have', 'from', 'or', 'one', 'had', 'by', 'word', 'but', 'not', 'what', 'all', 'were', 'we', 'when', 'your', 'can', 'said', 'there', 'use', 'an', 'each', 'which', 'she', 'do', 'how', 'their', 'if', 'will', 'up', 'other', 'about', 'out', 'many', 'then', 'them', 'these', 'so', 'some', 'her', 'would', 'make', 'like', 'him', 'into', 'time', 'has', 'look', 'two', 'more', 'write', 'go', 'see', 'number', 'no', 'way', 'could', 'people', 'my', 'than', 'first', 'water', 'been', 'call', 'who', 'oil', 'its', 'now', 'find', 'long', 'down', 'day', 'did', 'get', 'come', 'made', 'may', 'part']
+
+    # A bit dangerous, but requested. Let's do a safe subset for "Youstandonthe"
+    safe_prefixes = ['You', 'I', 'We', 'They', 'He', 'She', 'It', 'The', 'A', 'An', 'In', 'On', 'At', 'To', 'For', 'With', 'By', 'About', 'From', 'Into']
+    safe_suffixes = ['the', 'a', 'an', 'and', 'or', 'but', 'if', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about', 'from', 'into', 'is', 'are', 'was', 'were', 'am', 'be', 'been', 'being', 'do', 'does', 'did', 'have', 'has', 'had']
+
+    # e.g. Youstand -> You stand
+    for prefix in safe_prefixes:
+        text = re.sub(rf'\b({prefix})([a-z]+)\b', r'\1 \2', text)
+
+    for suffix in safe_suffixes:
+        text = re.sub(rf'\b([a-zA-Z]+)({suffix})\b', r'\1 \2', text)
+
     # Add space between Chinese and English/Number
     text = re.sub(r'([\u4e00-\u9fa5])([a-zA-Z0-9])', r'\1 \2', text)
     # Add space between English/Number and Chinese
@@ -38,12 +93,20 @@ def fix_chinese_english_spacing(text: str) -> str:
 
     # Fix math probabilities (e.g., P (A) -> P(A))
     text = re.sub(r'([PCE])\s*\(\s*([A-Za-z0-9_]+)\s*\)', r'\1(\2)', text)
+
+    # Fix math intervals (e.g., [ 10 , 20 ) -> [10, 20))
+    text = re.sub(r'(\[|\()\s*(\d+)\s*,\s*(\d+)\s*(\)|\])', r'\1\2, \3\4', text)
+
     # Fix fractions (e.g., 1 / 6 -> 1/6)
     text = re.sub(r'(\d+)\s*/\s*(\d+)', r'\1/\2', text)
+
     # Fix English words broken by spaces (basic heuristic)
     # e.g. "E x a m p l e" -> "Example"
     # This is risky, only applying to single separated letters.
     text = re.sub(r'\b([A-Za-z])\s+([A-Za-z])\b', r'\1\2', text)
+
+    # Try another pass for 3-letter splits like A n d -> And
+    text = re.sub(r'\b([A-Za-z])\s+([A-Za-z])\s+([A-Za-z])\b', r'\1\2\3', text)
 
     # Extra cleanup
     text = re.sub(r'\s+', ' ', text).strip()
@@ -92,6 +155,19 @@ def split_glued_toc(text: str) -> list[str]:
 
     return toc_lines
 
+def is_known_table_header(text: str) -> bool:
+    """Check if the text matches known table headers in Chinese educational materials."""
+    patterns = [
+        r'高度.*?频数',
+        r'长度.*?件数',
+        r'字母.*?频数',
+        r'游戏.*?取球方式.*?结果'
+    ]
+    for p in patterns:
+        if re.search(p, text):
+            return True
+    return False
+
 def convert_to_table(doc, paras_to_convert: list):
     """
     Converts a list of consecutive paragraphs that look like tabular data into a Word table.
@@ -99,16 +175,27 @@ def convert_to_table(doc, paras_to_convert: list):
     if not paras_to_convert:
         return
 
-    # Heuristic: split each paragraph by large spaces or tabs
+    # Heuristic: split each paragraph by large spaces or tabs, or dash for known headers
     table_data = []
     max_cols = 0
-    for p in paras_to_convert:
-        # Split by 2 or more spaces, or tabs
-        cols = re.split(r'\s{2,}|\t+', p.text.strip())
-        table_data.append(cols)
-        max_cols = max(max_cols, len(cols))
 
-    if max_cols < 2:
+    first_row_text = paras_to_convert[0].text.strip()
+    is_special = is_known_table_header(first_row_text)
+
+    for p in paras_to_convert:
+        text = p.text.strip()
+        # For known headers like "高度/cm—频数", we might need to split by EM dash or EN dash as well if space is missing
+        if is_special and ('—' in text or '-' in text):
+             cols = re.split(r'\s{2,}|\t+|—|-', text)
+        else:
+             cols = re.split(r'\s{2,}|\t+', text)
+
+        cols = [c.strip() for c in cols if c.strip()]
+        if cols:
+             table_data.append(cols)
+             max_cols = max(max_cols, len(cols))
+
+    if max_cols < 2 or not table_data:
         return # Not a table
 
     # Insert table before the first paragraph
@@ -188,12 +275,14 @@ def postprocess_docx(filepath: str) -> bool:
 
         for p in paras:
             text = p.text.strip()
-            # If it has tabular structure (multiple columns split by space)
-            if re.search(r'\s{2,}|\t+', text) and len(text) > 2:
+            # If it has tabular structure (multiple columns split by space) or matches known header
+            if (re.search(r'\s{2,}|\t+', text) and len(text) > 2) or is_known_table_header(text):
                 table_buffer.append(p)
             else:
-                # Flush table buffer if it has 2+ rows
+                # Flush table buffer if it has 2+ rows, or if it is a single row but looks exactly like a known header
+                # followed by another table row (handled by consecutive matching)
                 if len(table_buffer) >= 2:
+                    # Additional check: ensure they actually have similar column counts or are a special table
                     convert_to_table(doc, table_buffer)
                 table_buffer = []
 
@@ -214,7 +303,19 @@ def postprocess_docx(filepath: str) -> bool:
             t1 = p1.text.strip()
             t2 = p2.text.strip()
 
-            if t1 and t2 and not is_sentence_end(t1) and not is_heading_or_list(t2) and not is_heading_or_list(t1):
+            # Decide if we should merge
+            can_merge = False
+
+            # If t1 and t2 are not empty
+            if t1 and t2:
+                # 1. Force merge signals (e.g. math broken, sentence clearly broken)
+                if should_force_merge(t1, t2) and not is_heading_or_list(t2):
+                     can_merge = True
+                # 2. Heuristic merge: t1 doesn't end with sentence terminator, t2 is not a heading/list, t1 is not heading
+                elif not is_sentence_end(t1) and not is_heading_or_list(t2) and not is_heading_or_list(t1):
+                     can_merge = True
+
+            if can_merge:
                 join_char = " " if re.match(r'[a-zA-Z0-9]', t1[-1]) and re.match(r'[a-zA-Z0-9]', t2[0]) else ""
                 p1.add_run(join_char + t2)
 
