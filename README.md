@@ -3,10 +3,10 @@
 这是一个完全本地运行、不依赖云端 API 的文档转换工具，支持 Word 转 PDF 以及 PDF 转 Word 双向转换。后端采用 Python FastAPI 驱动 LibreOffice Headless 实现稳定的本地转换，前端采用 Vue 3 + Vite 构建现代化交互界面。
 
 ### 关于 PDF 转 Word 的质量说明与局限性
-本项目使用 LibreOffice 的 `writer_pdf_import` 滤镜进行 PDF 到 Word (DOCX) 的转换。
-* **高风险结构拦截**: 在处理含有复杂排版、背景图形或特定 PDF 导出格式的文件时，LibreOffice 倾向于生成绝对定位的文本框或将内容放在带有 `behindDoc` 属性的锚点中，而不是流式的正文段落。
-* **伪成功防范**: 这类文件在 Microsoft Word 中打开时往往“看起来是空白的”。本系统已在后端集成 `python-docx` 结构校验。当检测到生成的 DOCX 缺乏正常文本流且含有大量绝对定位对象时，会主动拦截为“转换失败”，避免向用户交付不可用的空白文档。
-* **建议**: 对于此类被拦截的复杂 PDF，建议使用专业的商业 PDF 转换工具（如 Adobe Acrobat, Solid Documents），因为它们具备更强大的版面分析与重构（OCR/Layout Analysis）能力。
+本项目结合使用基于 Python 的 `pdf2docx`（核心基于 `PyMuPDF` 和 `python-docx`）作为 PDF 转 Word 的主转换器。
+* **主要适用场景**: `pdf2docx` 对于文本型、排版结构相对清晰的 PDF 文件效果最好，能较大程度保留原有的文本流和段落结构。
+* **高风险结构拦截与伪成功防范**: 对于含有极复杂排版、复杂表格、大量层叠图形或扫描版内容的 PDF，转换出的结构在 Microsoft Word 中可能表现为不可见或极度错乱（例如大量的 `textbox` 或 `behindDoc`）。本系统在转换后集成了基于 `python-docx` 的严格结构校验兜底策略，一旦检测到生成的 DOCX 缺乏正常文本流且主要被绝对定位图形主导，会主动拦截并明确标记为“转换失败”，避免向用户交付“伪成功”的空白文档。
+* **局限性建议**: 鉴于基于规则布局解析的局限性，遇到无法转换或被拦截的复杂/扫描版 PDF 时，建议使用专业的商业级 PDF 转换与 OCR 识别工具（如 Adobe Acrobat, Solid Documents）。
 
 ## 核心特性
 
