@@ -87,15 +87,25 @@ def validate_docx_quality(filepath: str) -> Dict[str, Any]:
     paragraph_recovery_score = 1.0 - (short_para_count / num_text_paras) if num_text_paras > 0 else 0
     table_score = min(1.0, table_count / 1.0) if table_count > 0 else 0.0
 
+    # Numeric list recovery check
+    numeric_list_anomalies = 0
+    full_text = " ".join(text_paras)
+    # E.g. 108610138 (long squashed digits) or squashed random array
+    if re.search(r'\d{6,}', full_text):
+        numeric_list_anomalies += len(re.findall(r'\d{6,}', full_text))
+    numeric_list_recovery_score = max(0.0, 1.0 - (numeric_list_anomalies / max(1, (num_text_paras * 0.1))))
+
     # Construct report
     report = {
         "visible_text_ok": num_text_paras > 5,
         "paragraph_recovery_score": round(paragraph_recovery_score, 2),
         "table_recovery_score": round(table_score, 2),
         "math_expression_score": round(math_layout_score, 2),
+        "numeric_list_recovery_score": round(numeric_list_recovery_score, 2),
         "spacing_score": round(spacing_score, 2),
         "character_cleanliness_score": round(character_clean_score, 2),
         "heading_structure_score": round(heading_structure_score, 2),
+        "image_anchor_risk": behind_doc_count > 5 or anchor_count > 10 if 'anchor_count' in locals() else behind_doc_count > 5,
         "warnings": [],
         "quality_warnings": []
     }
@@ -116,12 +126,18 @@ def validate_docx_quality(filepath: str) -> Dict[str, Any]:
             report["quality_warnings"].append("部分数学公式、分数或区间可能存在排版粘连或断裂。")
         if report["spacing_score"] < 0.8:
             report["quality_warnings"].append("中英文混排、特殊符号间距存在一定异常。")
+        if report["numeric_list_recovery_score"] < 0.8:
+            report["quality_warnings"].append("存在数字列表被压缩黏连现象。")
+        if report["heading_structure_score"] < 0.2:
+            report["quality_warnings"].append("标题层级结构丢失较多。")
         if report["character_cleanliness_score"] < 0.8:
             report["quality_warnings"].append("存在字符重复或过多无效空格。")
-        if report["table_recovery_score"] == 0 and "表" in " ".join(text_paras):
+        if report["table_recovery_score"] == 0 and "表" in full_text:
             report["quality_warnings"].append("文档可能包含表格，但未能完全恢复为标准 Word 表格。")
+        if report["image_anchor_risk"]:
+            report["quality_warnings"].append("文档包含较多底层悬浮图片，可能影响图文排版或遮挡正文。")
 
-        if len(report["quality_warnings"]) >= 3 or report["paragraph_recovery_score"] < 0.5:
+        if len(report["quality_warnings"]) >= 4 or report["paragraph_recovery_score"] < 0.5:
             report["final_quality_level"] = "poor"
         elif len(report["quality_warnings"]) > 0:
             report["final_quality_level"] = "acceptable"

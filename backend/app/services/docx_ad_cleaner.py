@@ -58,41 +58,44 @@ def clean_trailing_ad_from_docx(input_path: Path, output_path: Path) -> bool:
         if not paragraphs:
             return False
 
-        # 1. Find the last non-empty block
-        last_non_empty_idx = -1
+        # 1. Look for trailing image paragraphs (can be more than one at the end)
+        trailing_ad_indices = []
         for i in range(len(paragraphs) - 1, -1, -1):
             p = paragraphs[i]
-            # Paragraph is considered non-empty if it has text or elements like images
-            if p.text.strip() or _is_image_only_paragraph(p):
-                last_non_empty_idx = i
-                break
+            text = p.text.strip()
+            if not text and not _is_image_only_paragraph(p):
+                trailing_ad_indices.append(i) # Empty paragraph, queue for deletion
+                continue
+            elif _is_image_only_paragraph(p):
+                trailing_ad_indices.append(i) # Image paragraph, queue for deletion
+            elif text:
+                break # Reached actual text content
 
-        if last_non_empty_idx == -1:
-            return False # Document is entirely empty or only has empty paragraphs
+        if not trailing_ad_indices:
+            return False
 
-        last_p = paragraphs[last_non_empty_idx]
+        last_non_empty_idx = min(trailing_ad_indices) - 1 if trailing_ad_indices else -1
 
-        # 2. Check if the last non-empty block is an image-only paragraph
-        if not _is_image_only_paragraph(last_p):
+        # Determine if we actually found any images to delete (not just empty lines)
+        found_image = any(_is_image_only_paragraph(paragraphs[idx]) for idx in trailing_ad_indices)
+        if not found_image:
             return False
 
         # 3. Check context (optional but good for safety):
-        # We want to make sure it's preceded by regular text paragraphs
-        # (meaning it's at the end of the document text, not just a document with only an image)
         has_preceding_text = False
-        for i in range(max(0, last_non_empty_idx - 5), last_non_empty_idx):
-            if len(paragraphs[i].text.strip()) > 5:
-                has_preceding_text = True
-                break
+        if last_non_empty_idx >= 0:
+            for i in range(max(0, last_non_empty_idx - 5), last_non_empty_idx + 1):
+                if len(paragraphs[i].text.strip()) > 5:
+                    has_preceding_text = True
+                    break
 
         if not has_preceding_text and last_non_empty_idx > 0:
             logger.info(f"DOCX pre-cleaner: Found image at end, but no preceding text in the last 5 paragraphs. Skipping deletion for safety. {input_path}")
             return False
 
         # 4. Delete the trailing image paragraph and all trailing empty paragraphs
-        # Delete from the end back to (and including) the last non-empty paragraph
-        for i in range(len(paragraphs) - 1, last_non_empty_idx - 1, -1):
-            _delete_paragraph(paragraphs[i])
+        for idx in trailing_ad_indices:
+            _delete_paragraph(paragraphs[idx])
 
         # Optional: delete any trailing completely empty paragraphs that might precede it
         while last_non_empty_idx > 0:
