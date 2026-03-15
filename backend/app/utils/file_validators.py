@@ -22,23 +22,23 @@ async def validate_file(file: UploadFile, conversion_type: ConversionType) -> No
         if ext not in ALLOWED_EXTENSIONS_WORD:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="上传失败：文件类型不支持"
+                detail=f"上传失败：当前为 Word 转 PDF 模式，仅支持 .doc/.docx，不支持 {ext}"
             )
         if file.content_type not in ALLOWED_MIME_TYPES_WORD:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="上传失败：文件类型不支持"
+                detail="上传失败：文件 MIME 类型不支持"
             )
     elif conversion_type == ConversionType.PDF_TO_WORD:
         if ext not in ALLOWED_EXTENSIONS_PDF:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="上传失败：文件类型不支持"
+                detail=f"上传失败：当前为 PDF 转 Word 模式，仅支持 .pdf，不支持 {ext}"
             )
         if file.content_type not in ALLOWED_MIME_TYPES_PDF:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="上传失败：文件类型不支持"
+                detail="上传失败：文件 MIME 类型不支持"
             )
 
     # Check file size directly from the UploadFile object
