@@ -35,6 +35,9 @@ class TaskInfo(BaseModel):
     ad_remove_stage: Optional[str] = None
     ad_remove_error: Optional[str] = None
 
+    # Quality info (for PDF to Word)
+    warnings: Optional[list[str]] = None
+
 class TaskResponse(BaseModel):
     task_id: str
     conversion_type: ConversionType = ConversionType.WORD_TO_PDF
@@ -50,3 +53,6 @@ class TaskResponse(BaseModel):
     ad_removed: bool = False
     ad_remove_stage: Optional[str] = None
     ad_remove_error: Optional[str] = None
+
+    # Quality info
+    warnings: Optional[list[str]] = None

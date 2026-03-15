@@ -149,13 +149,21 @@ class TaskManager:
                     task_info.error_code = "conversion_failed"
                     raise Exception(f"转换失败：PDF 内容解析失败。")
 
-                # DOCX Quality Validation to prevent "pseudo-success" (blank in MS Word)
+                # Post-process to fix hard breaks and common layout issues
+                from .docx_postprocessor import postprocess_docx
+                postprocess_docx(output_filepath)
+
+                # DOCX Quality Validation
                 from ..utils.docx_validator import validate_docx_quality
-                is_valid_docx = validate_docx_quality(output_filepath)
-                if not is_valid_docx:
+                quality_report = validate_docx_quality(output_filepath)
+
+                if quality_report.get("final_quality_level") == "failed":
                     task_info.error_code = "quality_validation_failed"
-                    logger.error(f"Task {task_id} validation failed: DOCX quality is poor.")
-                    raise Exception("转换失败：生成的 Word 结构不兼容或不可见，已拦截此结果。")
+                    logger.error(f"Task {task_id} validation failed: DOCX quality is pseudo-success/blank.")
+                    raise Exception(quality_report["warnings"][0])
+
+                if quality_report.get("warnings"):
+                    task_info.warnings = quality_report["warnings"]
 
             task_info.status = TaskStatus.COMPLETED
             task_info.completed_at = datetime.now(timezone.utc)

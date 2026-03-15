@@ -73,7 +73,8 @@ async def get_task_status(task_id: str):
         ad_removal_enabled=task_info.ad_removal_enabled,
         ad_removed=task_info.ad_removed,
         ad_remove_stage=task_info.ad_remove_stage,
-        ad_remove_error=task_info.ad_remove_error
+        ad_remove_error=task_info.ad_remove_error,
+        warnings=task_info.warnings
     )
 
 @router.get("/download/{task_id}", summary="Download converted file")
