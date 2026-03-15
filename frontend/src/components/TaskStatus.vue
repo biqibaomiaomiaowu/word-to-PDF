@@ -63,27 +63,27 @@ const handleDownload = () => {
 
     <!-- Route Labels (PDF to Word) -->
     <div v-if="task.status === 'completed' && task.conversion_type === 'pdf_to_word'" class="mt-2 flex gap-2">
-      <span v-if="task.converter_used === 'paddle'" class="inline-flex items-center rounded-md bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 ring-1 ring-inset ring-purple-600/20">
-        复杂版面引擎 (Paddle)
+      <span v-if="task.converter_used === 'paddle'" class="inline-flex items-center rounded-md bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 ring-1 ring-inset ring-purple-600/20" :title="task.route_reason">
+        引擎: Paddle (复杂版面)
       </span>
-      <span v-else-if="task.converter_used === 'pdf2docx'" class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20">
-        标准文本引擎 (pdf2docx)
+      <span v-else-if="task.converter_used === 'pdf2docx'" class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20" :title="task.route_reason">
+        引擎: pdf2docx (标准文本)
       </span>
 
-      <span v-if="task.fallback_attempted" class="inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-600/20">
-        发生降级回退
+      <span v-if="task.fallback_attempted" class="inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-600/20" title="主引擎转换失败或结果不佳，触发了降级机制">
+        触发降级机制
       </span>
     </div>
 
     <!-- Ad Removal Tags -->
     <div v-if="task.status === 'completed' && task.ad_removal_enabled" class="mt-2 flex gap-2">
-      <span v-if="task.ad_removed && task.ad_remove_stage === 'docx'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+      <span v-if="task.ad_removed && task.ad_remove_stage === 'docx'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20" title="在生成的 DOCX 文件中去除广告">
         去除广告(DOCX)
       </span>
-      <span v-else-if="task.ad_removed && task.ad_remove_stage === 'pdf'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+      <span v-else-if="task.ad_removed && task.ad_remove_stage === 'pdf'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20" title="在最终的 PDF 文件中去除广告">
         去除广告(PDF)
       </span>
-      <span v-else-if="task.ad_removed && task.ad_remove_stage === 'pdf_pre_conversion'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+      <span v-else-if="task.ad_removed && task.ad_remove_stage === 'pdf_pre_conversion'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20" title="在转换前剔除了 PDF 的广告页">
         去除广告(预处理)
       </span>
       <span v-else class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">
@@ -93,14 +93,14 @@ const handleDownload = () => {
 
     <!-- Quality Labels (PDF to Word) -->
     <div v-if="task.status === 'completed' && task.conversion_type === 'pdf_to_word' && task.final_quality_level" class="mt-2 flex gap-2">
-      <span v-if="task.final_quality_level === 'good'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
-        转换质量：良好
+      <span v-if="task.final_quality_level === 'good'" class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20" title="转换文档质量评级">
+        质量评级：良好
       </span>
-      <span v-else-if="task.final_quality_level === 'acceptable'" class="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 ring-1 ring-inset ring-yellow-600/20">
-        转换质量：可接受
+      <span v-else-if="task.final_quality_level === 'acceptable'" class="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 ring-1 ring-inset ring-yellow-600/20" title="转换文档质量评级">
+        质量评级：可接受
       </span>
-      <span v-else-if="task.final_quality_level === 'poor'" class="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">
-        转换质量：较差
+      <span v-else-if="task.final_quality_level === 'poor'" class="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20" title="转换文档质量评级">
+        质量评级：较差
       </span>
     </div>
 

@@ -13,6 +13,11 @@ class ConversionType(str, Enum):
     WORD_TO_PDF = "word_to_pdf"
     PDF_TO_WORD = "pdf_to_word"
 
+class ConverterMode(str, Enum):
+    AUTO = "auto"
+    PDF2DOCX = "pdf2docx"
+    PADDLE = "paddle"
+
 class TaskInfo(BaseModel):
     task_id: str
     conversion_type: ConversionType = ConversionType.WORD_TO_PDF
@@ -36,6 +41,7 @@ class TaskInfo(BaseModel):
     ad_remove_error: Optional[str] = None
 
     # Route info
+    converter_mode: ConverterMode = ConverterMode.AUTO
     converter_used: Optional[str] = None
     route_reason: Optional[str] = None
     primary_converter: Optional[str] = None
@@ -71,6 +77,7 @@ class TaskResponse(BaseModel):
     ad_remove_error: Optional[str] = None
 
     # Route info
+    converter_mode: ConverterMode = ConverterMode.AUTO
     converter_used: Optional[str] = None
     route_reason: Optional[str] = None
     primary_converter: Optional[str] = None
