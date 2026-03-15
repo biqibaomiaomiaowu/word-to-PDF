@@ -13,7 +13,8 @@ async def test_validate_file_invalid_extension():
 
     mock_upload = UploadFile(file=None, filename="test.txt", size=10, headers=Headers({"content-type": "text/plain"}))
     with pytest.raises(HTTPException) as exc_info:
-        await validate_file(mock_upload)
+        from app.models.schemas import ConversionType
+        await validate_file(mock_upload, conversion_type=ConversionType.WORD_TO_PDF)
     assert exc_info.value.status_code == 400
     assert "Invalid file extension" in exc_info.value.detail
 
@@ -21,6 +22,7 @@ async def test_validate_file_invalid_extension():
 async def test_validate_file_invalid_mime():
     mock_upload = UploadFile(file=None, filename="test.doc", size=10, headers=Headers({"content-type": "image/png"}))
     with pytest.raises(HTTPException) as exc_info:
-        await validate_file(mock_upload)
+        from app.models.schemas import ConversionType
+        await validate_file(mock_upload, conversion_type=ConversionType.WORD_TO_PDF)
     assert exc_info.value.status_code == 400
     assert "Invalid file type" in exc_info.value.detail

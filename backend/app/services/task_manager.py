@@ -142,6 +142,12 @@ class TaskManager:
                     output_dir=task_info.output_dir
                 )
 
+                # DOCX Quality Validation to prevent "pseudo-success" (blank in MS Word)
+                from ..utils.docx_validator import validate_docx_quality
+                is_valid_docx = validate_docx_quality(output_filepath)
+                if not is_valid_docx:
+                    raise Exception("转换失败：生成的 Word 结构不兼容，内容可能不可见，已拦截此伪成功结果。")
+
             task_info.status = TaskStatus.COMPLETED
             task_info.completed_at = datetime.now(timezone.utc)
             task_info.output_filepath = output_filepath
@@ -159,7 +165,7 @@ class TaskManager:
             task_info.status = TaskStatus.FAILED
             task_info.completed_at = datetime.now(timezone.utc)
             task_info.error_message = str(e)
-            logger.error(f"Task {task_id} failed: {e}")
+            logger.error(f"Task {task_id} [{task_info.conversion_type}] for {task_info.original_filename} failed: {e}")
 
 # Global instance of task manager
 task_manager = TaskManager()
