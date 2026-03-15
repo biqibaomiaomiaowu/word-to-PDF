@@ -69,6 +69,7 @@ async def get_task_status(task_id: str):
         created_at=task_info.created_at,
         completed_at=task_info.completed_at,
         error_message=task_info.error_message,
+        error_code=task_info.error_code,
         ad_removal_enabled=task_info.ad_removal_enabled,
         ad_removed=task_info.ad_removed,
         ad_remove_stage=task_info.ad_remove_stage,

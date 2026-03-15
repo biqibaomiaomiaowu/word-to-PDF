@@ -21,6 +21,7 @@ class TaskInfo(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    error_code: Optional[str] = None
 
     # Internal fields, not necessarily exposed to API
     input_filepath: str
@@ -42,6 +43,7 @@ class TaskResponse(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    error_code: Optional[str] = None
 
     # Ad removal fields
     ad_removal_enabled: bool = True

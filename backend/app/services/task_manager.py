@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from ..core.logger import logger
 from ..core.config import settings
 from .libreoffice import LibreOfficeService
+from .pdf_to_word import PDFToWordService
 from ..models.schemas import TaskStatus, TaskInfo, ConversionType
 from ..utils.pdf_processor import detect_and_remove_ad
 
@@ -137,16 +138,24 @@ class TaskManager:
 
             elif task_info.conversion_type == ConversionType.PDF_TO_WORD:
                 task_info.ad_removal_enabled = False
-                output_filepath = await LibreOfficeService.convert_to_word(
-                    input_path=conversion_input_path,
-                    output_dir=task_info.output_dir
-                )
+                logger.info(f"Using pdf2docx for conversion task {task_id}")
+
+                try:
+                    output_filepath = await PDFToWordService.convert_to_word(
+                        input_path=conversion_input_path,
+                        output_dir=task_info.output_dir
+                    )
+                except Exception as e:
+                    task_info.error_code = "conversion_failed"
+                    raise Exception(f"转换失败：PDF 内容解析失败。")
 
                 # DOCX Quality Validation to prevent "pseudo-success" (blank in MS Word)
                 from ..utils.docx_validator import validate_docx_quality
                 is_valid_docx = validate_docx_quality(output_filepath)
                 if not is_valid_docx:
-                    raise Exception("转换失败：生成的 Word 结构不兼容，内容可能不可见，已拦截此伪成功结果。")
+                    task_info.error_code = "quality_validation_failed"
+                    logger.error(f"Task {task_id} validation failed: DOCX quality is poor.")
+                    raise Exception("转换失败：生成的 Word 结构不兼容或不可见，已拦截此结果。")
 
             task_info.status = TaskStatus.COMPLETED
             task_info.completed_at = datetime.now(timezone.utc)
@@ -165,7 +174,9 @@ class TaskManager:
             task_info.status = TaskStatus.FAILED
             task_info.completed_at = datetime.now(timezone.utc)
             task_info.error_message = str(e)
-            logger.error(f"Task {task_id} [{task_info.conversion_type}] for {task_info.original_filename} failed: {e}")
+            if not task_info.error_code:
+                task_info.error_code = "conversion_failed"
+            logger.error(f"Task {task_id} [{task_info.conversion_type}] for {task_info.original_filename} failed: {e}", exc_info=True)
 
 # Global instance of task manager
 task_manager = TaskManager()

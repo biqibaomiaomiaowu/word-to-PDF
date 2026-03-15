@@ -115,9 +115,11 @@ const handleFilesSelected = async (files, removeAd) => {
       if (taskIndex !== -1) {
         currentTasks.value[taskIndex].status = 'failed'
         if (err.response && err.response.data && err.response.data.detail) {
-          currentTasks.value[taskIndex].error_message = `上传失败: ${err.response.data.detail}`
+          // If the detail already contains "上传失败", don't prefix it again
+          const detail = err.response.data.detail;
+          currentTasks.value[taskIndex].error_message = detail.startsWith('上传失败') ? detail : `上传失败: ${detail}`;
         } else {
-          currentTasks.value[taskIndex].error_message = '上传失败，请检查网络或稍后重试。'
+          currentTasks.value[taskIndex].error_message = '上传失败：请检查网络或稍后重试。'
         }
       }
     }

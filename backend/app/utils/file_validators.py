@@ -22,23 +22,23 @@ async def validate_file(file: UploadFile, conversion_type: ConversionType) -> No
         if ext not in ALLOWED_EXTENSIONS_WORD:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file extension. Allowed extensions for Word to PDF are: {', '.join(ALLOWED_EXTENSIONS_WORD)}"
+                detail="上传失败：文件类型不支持"
             )
         if file.content_type not in ALLOWED_MIME_TYPES_WORD:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file type: {file.content_type}. Only Word documents are allowed."
+                detail="上传失败：文件类型不支持"
             )
     elif conversion_type == ConversionType.PDF_TO_WORD:
         if ext not in ALLOWED_EXTENSIONS_PDF:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file extension. Allowed extensions for PDF to Word are: {', '.join(ALLOWED_EXTENSIONS_PDF)}"
+                detail="上传失败：文件类型不支持"
             )
         if file.content_type not in ALLOWED_MIME_TYPES_PDF:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file type: {file.content_type}. Only PDF documents are allowed."
+                detail="上传失败：文件类型不支持"
             )
 
     # Check file size directly from the UploadFile object
@@ -48,5 +48,5 @@ async def validate_file(file: UploadFile, conversion_type: ConversionType) -> No
     if file_size and file_size > max_size_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File is too large. Max size is {settings.MAX_FILE_SIZE_MB}MB."
+            detail="上传失败：文件大小超出限制"
         )
