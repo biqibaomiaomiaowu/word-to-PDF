@@ -62,7 +62,13 @@ const validateAndEmit = (files) => {
     const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
 
     if (!allowedExtensions.includes(fileExtension)) {
-      errorMessages.push(`"${file.name}": 不支持的格式(${fileExtension})`)
+      if (!isWordToPdf && ['.doc', '.docx'].includes(fileExtension)) {
+        errorMessages.push(`"${file.name}": 当前为 PDF 转 Word 模式，仅支持 .pdf；如需上传 ${fileExtension}，请切换到 Word 转 PDF 模式。`)
+      } else if (isWordToPdf && ['.pdf'].includes(fileExtension)) {
+        errorMessages.push(`"${file.name}": 当前为 Word 转 PDF 模式，仅支持 .doc/.docx；如需上传 .pdf，请切换到 PDF 转 Word 模式。`)
+      } else {
+        errorMessages.push(`"${file.name}": 不支持的格式(${fileExtension})`)
+      }
       continue
     }
 

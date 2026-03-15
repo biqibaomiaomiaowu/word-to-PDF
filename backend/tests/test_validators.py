@@ -16,7 +16,7 @@ async def test_validate_file_invalid_extension():
         from app.models.schemas import ConversionType
         await validate_file(mock_upload, conversion_type=ConversionType.WORD_TO_PDF)
     assert exc_info.value.status_code == 400
-    assert "上传失败：文件类型不支持" in exc_info.value.detail
+    assert "上传失败：当前为 Word 转 PDF 模式，仅支持 .doc/.docx，不支持" in exc_info.value.detail
 
 @pytest.mark.asyncio
 async def test_validate_file_invalid_mime():
@@ -25,4 +25,4 @@ async def test_validate_file_invalid_mime():
         from app.models.schemas import ConversionType
         await validate_file(mock_upload, conversion_type=ConversionType.WORD_TO_PDF)
     assert exc_info.value.status_code == 400
-    assert "上传失败：文件类型不支持" in exc_info.value.detail
+    assert "上传失败：文件 MIME 类型不支持" in exc_info.value.detail
