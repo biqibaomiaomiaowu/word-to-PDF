@@ -9,7 +9,8 @@ from ..core.config import settings
 from ..core.logger import logger
 from ..utils.file_validators import validate_file
 from ..services.task_manager import task_manager
-from ..models.schemas import TaskResponse, TaskStatus, ConversionType
+from ..models.schemas import TaskResponse, TaskStatus, ConversionType, ConverterMode
+from .capabilities import is_paddle_available
 
 router = APIRouter()
 
@@ -20,9 +21,16 @@ async def health_check() -> Dict[str, str]:
 @router.post("/convert", response_model=TaskResponse, status_code=status.HTTP_202_ACCEPTED, summary="Upload a file for conversion")
 async def upload_for_conversion(
     file: UploadFile = File(...),
-    remove_ad: bool = Form(True, description="Whether to detect and remove ads from the last page (Word to PDF only)"),
-    conversion_type: ConversionType = Form(ConversionType.WORD_TO_PDF, description="The type of conversion to perform")
+    remove_ad: bool = Form(True, description="Whether to detect and remove ads from the last page"),
+    conversion_type: ConversionType = Form(ConversionType.WORD_TO_PDF, description="The type of conversion to perform"),
+    converter_mode: ConverterMode = Form(ConverterMode.AUTO, description="The converter engine to use (PDF to Word only)")
 ):
+    if converter_mode == ConverterMode.PADDLE and not is_paddle_available():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="复杂版面引擎未配置，请切换为自动选择或标准文本引擎。"
+        )
+
     # 1. Validate file
     await validate_file(file, conversion_type)
 
@@ -42,7 +50,8 @@ async def upload_for_conversion(
         original_filename=file.filename,
         input_filepath=input_filepath,
         remove_ad=remove_ad,
-        conversion_type=conversion_type
+        conversion_type=conversion_type,
+        converter_mode=converter_mode
     )
 
     task_info = task_manager.get_task_status(task_id)

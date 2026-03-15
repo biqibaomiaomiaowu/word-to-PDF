@@ -6,6 +6,10 @@ const props = defineProps({
   conversionType: {
     type: String,
     default: 'word_to_pdf'
+  },
+  capabilities: {
+    type: Object,
+    default: () => ({})
   }
 })
 const isDragging = ref(false)
@@ -13,6 +17,7 @@ const fileInput = ref(null)
 // 从 Vite 环境变量中读取是否默认开启，如果没有配置，则默认 true
 const defaultRemoveAd = import.meta.env.VITE_DEFAULT_REMOVE_AD !== 'false'
 const removeAd = ref(defaultRemoveAd)
+const converterMode = ref('auto')
 
 const handleDragOver = (e) => {
   e.preventDefault()
@@ -86,7 +91,7 @@ const validateAndEmit = (files) => {
   }
 
   if (validFiles.length > 0) {
-    emit('files-selected', validFiles, removeAd.value)
+    emit('files-selected', validFiles, removeAd.value, converterMode.value)
   }
 }
 </script>
@@ -120,18 +125,44 @@ const validateAndEmit = (files) => {
       </p>
     </div>
 
-    <!-- Ad Removal Option (Only for Word to PDF) -->
-    <div v-if="props.conversionType === 'word_to_pdf'" class="flex items-center gap-2 px-2">
-      <input
-        type="checkbox"
-        id="removeAdCheckbox"
-        v-model="removeAd"
-        class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-      >
-      <label for="removeAdCheckbox" class="text-sm font-medium text-gray-700 select-none">
-        智能去除末尾广告（默认开启）
-      </label>
-      <span class="text-xs text-gray-500 ml-1">仅检测最后一页底部区域，未识别到广告时不会修改文件</span>
+    <!-- Options Area -->
+    <div class="flex flex-col gap-4 mt-2 px-2">
+      <!-- PDF to Word Options -->
+      <div v-if="props.conversionType === 'pdf_to_word'" class="flex flex-col gap-2">
+        <label class="text-sm font-medium text-gray-700">转换方案选择</label>
+        <div class="flex gap-4">
+          <label class="inline-flex items-center">
+            <input type="radio" v-model="converterMode" value="auto" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500">
+            <span class="ml-2 text-sm text-gray-700">自动选择（推荐）</span>
+          </label>
+          <label class="inline-flex items-center">
+            <input type="radio" v-model="converterMode" value="pdf2docx" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500">
+            <span class="ml-2 text-sm text-gray-700">标准文本引擎 (pdf2docx)</span>
+          </label>
+          <label class="inline-flex items-center" :class="{ 'opacity-50 cursor-not-allowed': capabilities && capabilities.paddle_available === false }">
+            <input type="radio" v-model="converterMode" value="paddle" :disabled="capabilities && capabilities.paddle_available === false" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500">
+            <span class="ml-2 text-sm text-gray-700">复杂版面引擎 (Paddle)</span>
+            <span v-if="capabilities && capabilities.paddle_available === false" class="ml-1 text-xs text-red-500">(未配置)</span>
+          </label>
+        </div>
+        <p v-if="converterMode === 'auto' && capabilities && capabilities.paddle_available === false" class="text-xs text-yellow-600 mt-1">当前未配置复杂版面引擎，自动选择将仅使用标准文本引擎。</p>
+      </div>
+
+      <!-- Ad Removal Option -->
+      <div class="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="removeAdCheckbox"
+          v-model="removeAd"
+          class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+        >
+        <label for="removeAdCheckbox" class="text-sm font-medium text-gray-700 select-none">
+          {{ props.conversionType === 'word_to_pdf' ? '智能去除末尾广告' : '智能去除尾页广告' }}（默认开启）
+        </label>
+        <span class="text-xs text-gray-500 ml-1">
+          {{ props.conversionType === 'word_to_pdf' ? '仅检测最后一页底部区域，未识别到广告时不会修改文件' : '如支持则在转换前剔除 PDF 尾页广告' }}
+        </span>
+      </div>
     </div>
   </div>
 </template>

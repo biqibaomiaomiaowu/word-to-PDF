@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useHistoryStore } from '@/stores/history'
 import api from '@/services/api'
 import UploadZone from '@/components/UploadZone.vue'
@@ -67,8 +67,18 @@ onUnmounted(() => {
 })
 
 const conversionType = ref('pdf_to_word') // default to new functionality
+const capabilities = ref(null)
 
-const handleFilesSelected = async (files, removeAd) => {
+onMounted(async () => {
+  try {
+    const response = await api.getCapabilities()
+    capabilities.value = response.data
+  } catch (err) {
+    console.error('Failed to load capabilities:', err)
+  }
+})
+
+const handleFilesSelected = async (files, removeAd, converterMode) => {
   errorMessage.value = null
 
   // Create placeholders for uploading files
@@ -86,7 +96,7 @@ const handleFilesSelected = async (files, removeAd) => {
   // Upload concurrently
   const uploadPromises = newTasks.map(async (localTask) => {
     try {
-      const response = await api.convertFile(localTask.file, removeAd, localTask.conversion_type, (progressEvent) => {
+      const response = await api.convertFile(localTask.file, removeAd, localTask.conversion_type, converterMode, (progressEvent) => {
         if (progressEvent.total) {
           const taskIndex = currentTasks.value.findIndex(t => t._localId === localTask._localId)
           if (taskIndex !== -1) {
@@ -194,6 +204,7 @@ const clearCurrentTasks = () => {
         <!-- Append new files to existing list -->
         <UploadZone
           :conversionType="conversionType"
+          :capabilities="capabilities"
           @files-selected="handleFilesSelected"
         />
       </template>
@@ -202,6 +213,7 @@ const clearCurrentTasks = () => {
       <UploadZone
         v-else
         :conversionType="conversionType"
+        :capabilities="capabilities"
         @files-selected="handleFilesSelected"
       />
 

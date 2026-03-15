@@ -10,8 +10,9 @@ from .libreoffice import LibreOfficeService
 from .pdf_to_word_pdf2docx import PDFToWordService
 from .pdf_to_word_paddle import PDFToWordPaddleService
 from .pdf_route_selector import PDFRouteSelector
-from ..models.schemas import TaskStatus, TaskInfo, ConversionType
+from ..models.schemas import TaskStatus, TaskInfo, ConversionType, ConverterMode
 from ..utils.pdf_processor import detect_and_remove_ad, detect_and_remove_ad_pre_conversion
+from ..api.capabilities import is_paddle_available
 
 class TaskManager:
     def __init__(self):
@@ -35,7 +36,7 @@ class TaskManager:
                 pass
             logger.info("Task manager stopped.")
 
-    async def enqueue_task(self, original_filename: str, input_filepath: str, remove_ad: bool = True, conversion_type: ConversionType = ConversionType.WORD_TO_PDF) -> str:
+    async def enqueue_task(self, original_filename: str, input_filepath: str, remove_ad: bool = True, conversion_type: ConversionType = ConversionType.WORD_TO_PDF, converter_mode: ConverterMode = ConverterMode.AUTO) -> str:
         """Enqueues a new conversion task and returns its task ID."""
         task_id = str(uuid.uuid4())
 
@@ -51,7 +52,8 @@ class TaskManager:
             created_at=datetime.now(timezone.utc),
             input_filepath=input_filepath,
             output_dir=task_output_dir,
-            remove_ad=remove_ad if conversion_type == ConversionType.WORD_TO_PDF else False
+            remove_ad=remove_ad,
+            converter_mode=converter_mode if conversion_type == ConversionType.PDF_TO_WORD else ConverterMode.AUTO
         )
 
         self.tasks[task_id] = task_info
@@ -154,12 +156,26 @@ class TaskManager:
                         task_info.ad_remove_stage = "pdf_pre_conversion"
 
                 # Routing Logic
-                converter, reason, stats = PDFRouteSelector.analyze_pdf(conversion_input_path)
+                if task_info.converter_mode == ConverterMode.AUTO:
+                    converter, reason, stats = PDFRouteSelector.analyze_pdf(conversion_input_path)
+                elif task_info.converter_mode == ConverterMode.PDF2DOCX:
+                    converter = "pdf2docx"
+                    reason = "User selected standard engine."
+                elif task_info.converter_mode == ConverterMode.PADDLE:
+                    if not is_paddle_available():
+                        task_info.error_code = "conversion_failed"
+                        raise Exception("复杂版面引擎未配置，无法执行转换。")
+                    converter = "paddle"
+                    reason = "User forced complex layout engine."
+                else:
+                    converter = "pdf2docx"
+                    reason = "Unknown converter mode, defaulting to standard engine."
+
                 task_info.primary_converter = converter
                 task_info.converter_used = converter
                 task_info.route_reason = reason
 
-                logger.info(f"PDF Routing Decision for task {task_id}: {converter} - Reason: {reason}")
+                logger.info(f"PDF Routing Decision for task {task_id}: Mode: {task_info.converter_mode.value}, Converter: {converter} - Reason: {reason}")
 
                 from ..utils.docx_validator import validate_docx_quality
                 from .docx_postprocessor import postprocess_docx

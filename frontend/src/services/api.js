@@ -9,11 +9,12 @@ const apiClient = axios.create({
 
 export default {
   // Convert a file
-  convertFile(file, removeAd = true, conversionType = 'word_to_pdf', onUploadProgress) {
+  convertFile(file, removeAd = true, conversionType = 'word_to_pdf', converterMode = 'auto', onUploadProgress) {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('remove_ad', removeAd)
     formData.append('conversion_type', conversionType)
+    formData.append('converter_mode', converterMode)
 
     return apiClient.post('/convert', formData, {
       headers: {
@@ -21,6 +22,11 @@ export default {
       },
       onUploadProgress
     })
+  },
+
+  // Get Capabilities
+  getCapabilities() {
+    return apiClient.get('/capabilities')
   },
 
   // Check status of a conversion task
