@@ -50,16 +50,25 @@ def force_refresh_paddle_check() -> tuple[bool, str]:
 
     test_script = """
 import sys
+import traceback
 try:
     import paddle
     import fitz
     import docx
     import cv2
     import numpy as np
-    from paddleocr import PPStructure
+    from paddleocr import PaddleOCR
+    # Check instantiation with minimally impacting parameters
+    import os
+    use_gpu = False
+    try:
+        use_gpu = paddle.device.is_compiled_with_cuda() and paddle.device.get_device() != 'cpu'
+    except:
+        pass
+    _ = PaddleOCR(use_angle_cls=False, lang="ch", use_gpu=use_gpu, show_log=False)
     print("ALL_GOOD")
 except Exception as e:
-    print(f"IMPORT_ERROR: {str(e)}")
+    print(f"IMPORT_ERROR: {traceback.format_exc()}")
     sys.exit(1)
 """
     try:
@@ -68,7 +77,7 @@ except Exception as e:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=8
+            timeout=15
         )
         if result.returncode == 0 and "ALL_GOOD" in result.stdout:
             _PADDLE_AVAILABLE_CACHE = True

@@ -10,8 +10,9 @@ import cv2
 def run_paddle_ocr(input_path, output_dir):
     try:
         import paddle
-        from paddleocr import PPStructure, save_structure_res
+        from paddleocr import PaddleOCR
         import docx
+        from docx.shared import Pt
     except ImportError as e:
         return {"success": False, "error": f"Failed to import PaddleOCR or docx: {e}"}
 
@@ -29,20 +30,20 @@ def run_paddle_ocr(input_path, output_dir):
         except Exception:
             pass
 
-        engine = PPStructure(
-            show_log=False,
-            recovery=True,
+        engine = PaddleOCR(
+            use_angle_cls=False,
             lang='ch',
             use_gpu=use_gpu,
-            layout=True,
-            table=True,
-            ocr=True
+            show_log=False
         )
 
         doc = fitz.open(input_path)
-        generated_docx_paths = []
+        merged_doc = docx.Document()
 
         for page_num in range(doc.page_count):
+            if page_num > 0:
+                merged_doc.add_page_break()
+                
             page = doc[page_num]
             pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
             img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
@@ -52,34 +53,15 @@ def run_paddle_ocr(input_path, output_dir):
             elif pix.n == 4:
                 img_array = cv2.cvtColor(img_array, cv2.COLOR_RGBA2BGR)
 
-            result = engine(img_array)
-
-            save_folder = os.path.join(temp_dir, f"page_{page_num}")
-            os.makedirs(save_folder, exist_ok=True)
-            img_name = f"page_{page_num}"
-
-            save_structure_res(result, save_folder, img_name)
-            page_docx_path = os.path.join(save_folder, f"{img_name}_recovery.docx")
-
-            if os.path.exists(page_docx_path):
-                generated_docx_paths.append(page_docx_path)
-
+            result = engine.ocr(img_array, cls=False)
+            
+            # Simple fallback to dump text line by line to a word document
+            if result and len(result) > 0 and result[0]:
+                for line in result[0]:
+                    text, conf = line[1]
+                    p = merged_doc.add_paragraph(text)
+                    
         doc.close()
-
-        if not generated_docx_paths:
-            return {"success": False, "error": "No pages were successfully recovered by PaddleOCR."}
-
-        merged_doc = docx.Document(generated_docx_paths[0])
-        for path in generated_docx_paths[1:]:
-            if not os.path.exists(path):
-                continue
-            merged_doc.add_page_break()
-            sub_doc = docx.Document(path)
-            for element in sub_doc.element.body:
-                if element.tag.endswith('sectPr'):
-                    continue
-                merged_doc.element.body.append(element)
-
         merged_doc.save(output_filepath)
 
         # Cleanup

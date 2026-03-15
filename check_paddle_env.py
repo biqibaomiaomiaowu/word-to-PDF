@@ -74,13 +74,16 @@ print("OK")
         print(f"  ❌ 探测子进程失败: {e}")
         return
 
-    # 4. 检查 PPStructure 实例化及 GPU 状态
-    print("\n[4] 检查 PPStructure 实例化及 GPU 状态 (这可能需要几秒到十几秒)")
+    # 4. 检查 PaddleOCR 3.x 实例化及 GPU 状态
+    print("\n[4] 检查 PaddleOCR 3.4.0 实例化及 GPU 状态 (这可能需要几秒到十几秒)")
     pp_script = """
 import sys
+import traceback
 try:
     import paddle
-    from paddleocr import PPStructure
+    import paddleocr
+    from paddleocr import PaddleOCR
+    print(f"INFO|PaddleOCR Version: {paddleocr.__version__}")
     
     use_gpu = False
     try:
@@ -88,11 +91,10 @@ try:
     except:
         pass
         
-    engine = PPStructure(show_log=False, recovery=True, lang='ch', use_gpu=use_gpu, layout=True, table=True, ocr=True)
+    engine = PaddleOCR(show_log=False, lang='ch', use_gpu=use_gpu)
     print(f"SUCCESS|USE_GPU={use_gpu}")
 except Exception as e:
-    import traceback
-    print("FAILED|", str(e))
+    print("FAILED|\\n" + traceback.format_exc())
 """
     try:
         res = subprocess.run([python_exe, "-c", pp_script], capture_output=True, text=True, timeout=30)
@@ -100,15 +102,15 @@ except Exception as e:
         
         last_line = out.split("\\n")[-1] if out else ""
         if "SUCCESS" in out:
-            print("  ✅ PPStructure 实例化成功！")
+            print("  ✅ PaddleOCR 3.x 实例化成功！")
             if "USE_GPU=True" in out:
                 print("  ✅ GPU 硬件加速已 [开启]")
             else:
                 print("  ⚠️ GPU 硬件加速未开启 (运行模式: CPU)。如果是带独立显卡的机器，建议安装 paddlepaddle-gpu 加速。")
         else:
-            print(f"  ❌ PPStructure 实例化失败: {out} {res.stderr}")
+            print(f"  ❌ PaddleOCR 实例化失败\\n{out}\\n{res.stderr}")
     except subprocess.TimeoutExpired:
-        print("  ❌ PPStructure 实例化超时 (超过30秒)，这通常是因为缺少底层动态链接库或内存不足。")
+        print("  ❌ PaddleOCR 实例化超时 (超过30秒)，这通常是因为缺少底层动态链接库或内存不足。")
     except Exception as e:
         print(f"  ❌ 探测异常: {e}")
 
