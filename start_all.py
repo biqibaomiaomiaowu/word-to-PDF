@@ -156,7 +156,7 @@ def setup_frontend(frontend_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description="一键启动本地 Word 转 PDF 服务")
     parser.add_argument("--backend-port", type=int, default=8000, help="后端 FastAPI 服务端口 (默认: 8000)")
-    parser.add_argument("--frontend-port", type=int, default=8000, help="前端 Vite 服务端口 (默认: 8000)")
+    parser.add_argument("--frontend-port", type=int, default=3000, help="前端 Vite 服务端口 (默认: 3000)")
     parser.add_argument("--disable-ad-removal", action="store_true", help="禁用智能去除末尾广告 (默认开启)")
     args = parser.parse_args()
 
