@@ -2,6 +2,12 @@
 import { ref } from 'vue'
 
 const emit = defineEmits(['files-selected'])
+const props = defineProps({
+  conversionType: {
+    type: String,
+    default: 'word_to_pdf'
+  }
+})
 const isDragging = ref(false)
 const fileInput = ref(null)
 // 从 Vite 环境变量中读取是否默认开启，如果没有配置，则默认 true
@@ -41,7 +47,8 @@ const triggerFileInput = () => {
 }
 
 const validateAndEmit = (files) => {
-  const allowedExtensions = ['.doc', '.docx']
+  const isWordToPdf = props.conversionType === 'word_to_pdf'
+  const allowedExtensions = isWordToPdf ? ['.doc', '.docx'] : ['.pdf']
   const validFiles = []
   const errorMessages = []
 
@@ -93,18 +100,22 @@ const validateAndEmit = (files) => {
       ref="fileInput"
       class="hidden"
       multiple
-      accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      :accept="props.conversionType === 'word_to_pdf' ? '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document' : '.pdf,application/pdf'"
       @change="handleFileSelect"
     >
     <svg class="w-16 h-16 text-blue-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
     </svg>
-    <h3 class="text-xl font-medium text-gray-700 mb-2">点击或拖拽多个文件到这里上传</h3>
-    <p class="text-sm text-gray-500">支持批量上传 .doc / .docx (最多 20 个)，单文件最大 100MB</p>
+      <h3 class="text-xl font-medium text-gray-700 mb-2">
+        {{ props.conversionType === 'word_to_pdf' ? '上传 Word 文件' : '上传 PDF 文件' }}
+      </h3>
+      <p class="text-sm text-gray-500">
+        {{ props.conversionType === 'word_to_pdf' ? '支持批量上传 .doc / .docx (最多 20 个)，单文件最大 100MB' : '支持批量上传 .pdf (最多 20 个)，单文件最大 100MB' }}
+      </p>
     </div>
 
-    <!-- Ad Removal Option -->
-    <div class="flex items-center gap-2 px-2">
+    <!-- Ad Removal Option (Only for Word to PDF) -->
+    <div v-if="props.conversionType === 'word_to_pdf'" class="flex items-center gap-2 px-2">
       <input
         type="checkbox"
         id="removeAdCheckbox"
