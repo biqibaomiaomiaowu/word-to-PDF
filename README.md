@@ -71,13 +71,28 @@
 
 ## 环境要求
 
-1. **Python**: 3.9+
+1. **Python**: 3.9+ (推荐 3.12)
 2. **Node.js**: 16+
 3. **LibreOffice**: 必须在运行后端的服务器（或本地机器）上安装。
    - **Ubuntu/Debian**: `sudo apt install libreoffice`
    - **CentOS/RHEL**: `sudo yum install libreoffice`
    - **macOS**: `brew install --cask libreoffice` (确保 `libreoffice` 在系统 PATH 中)
    - **Windows**: 安装 LibreOffice，并将安装目录下的 `program` 文件夹添加到系统环境变量 `PATH` 中。
+
+### 可选: 独立复杂版面引擎环境 (Paddle)
+
+主项目**默认不强依赖 Paddle**。即使没有 Paddle，系统也能完美运行标准文本引擎 (`pdf2docx`) 进行转换。
+
+如果你需要处理极度复杂、公式密集、排版碎片化的教辅资料，可以配置独立的 `.paddle_env` 环境来开启复杂版面引擎选项：
+
+1. 在**项目根目录**下（与 `backend` 同级）创建虚拟环境：
+   `python -m venv .paddle_env`
+2. 激活该独立环境：
+   - Windows: `.paddle_env\Scripts\activate`
+   - Linux/Mac: `source .paddle_env/bin/activate`
+3. 在独立环境中安装轻量级 Paddle 相关依赖（以 Windows 下 RTX 4060 8GB 为例，具体版本请参考 Paddle 官网）：
+   `pip install paddlepaddle-gpu paddleocr python-docx PyMuPDF opencv-python-headless`
+4. 启动系统后，主后端会自动探测项目根目录下是否存在 `.paddle_env` 且能否成功引入 Paddle。如果探测成功，前端将允许用户选择“复杂版面引擎 (Paddle)”。如果转换失败或质量极差，系统具备内部降级兜底（Fallback）机制，会尝试回退到标准文本引擎。
 
 ## 本地启动指南
 

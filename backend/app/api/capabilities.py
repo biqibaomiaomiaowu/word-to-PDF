@@ -2,17 +2,48 @@ from fastapi import APIRouter
 from typing import Dict, Any
 import subprocess
 import sys
+import os
 
 router = APIRouter()
 
+_PADDLE_AVAILABLE_CACHE = None
+
 def is_paddle_available() -> bool:
-    try:
-        import paddleocr
-        from paddleocr import PPStructure
-        return True
-    except ImportError:
+    global _PADDLE_AVAILABLE_CACHE
+    if _PADDLE_AVAILABLE_CACHE is not None:
+        return _PADDLE_AVAILABLE_CACHE
+
+    # check if .paddle_env exists in project root
+    # Project root should be one level up from backend
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    paddle_env_dir = os.path.join(base_dir, ".paddle_env")
+
+    if sys.platform.startswith("win"):
+        python_exe = os.path.join(paddle_env_dir, "Scripts", "python.exe")
+    else:
+        python_exe = os.path.join(paddle_env_dir, "bin", "python")
+
+    if not os.path.exists(python_exe):
+        _PADDLE_AVAILABLE_CACHE = False
         return False
+
+    try:
+        # Check if paddle is importable and prints version successfully
+        result = subprocess.run(
+            [python_exe, "-c", "import paddle; print(paddle.__version__)"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            _PADDLE_AVAILABLE_CACHE = True
+            return True
+        else:
+            _PADDLE_AVAILABLE_CACHE = False
+            return False
     except Exception:
+        _PADDLE_AVAILABLE_CACHE = False
         return False
 
 def is_pdf2docx_available() -> bool:
