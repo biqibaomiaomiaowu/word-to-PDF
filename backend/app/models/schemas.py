@@ -42,8 +42,11 @@ class TaskInfo(BaseModel):
     paragraph_recovery_score: Optional[float] = None
     table_recovery_score: Optional[float] = None
     math_expression_score: Optional[float] = None
+    numeric_list_recovery_score: Optional[float] = None
     spacing_score: Optional[float] = None
     character_cleanliness_score: Optional[float] = None
+    heading_structure_score: Optional[float] = None
+    image_anchor_risk: Optional[bool] = None
 
 class TaskResponse(BaseModel):
     task_id: str
@@ -68,5 +71,8 @@ class TaskResponse(BaseModel):
     paragraph_recovery_score: Optional[float] = None
     table_recovery_score: Optional[float] = None
     math_expression_score: Optional[float] = None
+    numeric_list_recovery_score: Optional[float] = None
     spacing_score: Optional[float] = None
     character_cleanliness_score: Optional[float] = None
+    heading_structure_score: Optional[float] = None
+    image_anchor_risk: Optional[bool] = None

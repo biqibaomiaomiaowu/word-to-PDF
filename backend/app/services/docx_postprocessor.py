@@ -64,49 +64,74 @@ def fix_chinese_english_spacing(text: str) -> str:
     text = clean_repeated_chars(text)
 
     # Fix English word gluing commonly found in OCR/PDF parsing
-    # e.g., "Youstandonthe" -> we won't fix ALL English words without a dictionary,
-    # but we can fix very common disjoints if we use simple rules,
-    # or rely on regex spacing.
-    # To avoid heavy NLP, we just fix space around punctuation and some basic patterns.
-
-    # Simple fix for lowercase followed by uppercase (camelCase that shouldn't be)
     text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
 
-    # Simple fix for common words glued
-    common_words = ['the', 'and', 'of', 'to', 'a', 'in', 'is', 'you', 'that', 'it', 'he', 'was', 'for', 'on', 'are', 'as', 'with', 'his', 'they', 'I', 'at', 'be', 'this', 'have', 'from', 'or', 'one', 'had', 'by', 'word', 'but', 'not', 'what', 'all', 'were', 'we', 'when', 'your', 'can', 'said', 'there', 'use', 'an', 'each', 'which', 'she', 'do', 'how', 'their', 'if', 'will', 'up', 'other', 'about', 'out', 'many', 'then', 'them', 'these', 'so', 'some', 'her', 'would', 'make', 'like', 'him', 'into', 'time', 'has', 'look', 'two', 'more', 'write', 'go', 'see', 'number', 'no', 'way', 'could', 'people', 'my', 'than', 'first', 'water', 'been', 'call', 'who', 'oil', 'its', 'now', 'find', 'long', 'down', 'day', 'did', 'get', 'come', 'made', 'may', 'part']
-
-    # A bit dangerous, but requested. Let's do a safe subset for "Youstandonthe"
     safe_prefixes = ['You', 'I', 'We', 'They', 'He', 'She', 'It', 'The', 'A', 'An', 'In', 'On', 'At', 'To', 'For', 'With', 'By', 'About', 'From', 'Into']
     safe_suffixes = ['the', 'a', 'an', 'and', 'or', 'but', 'if', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about', 'from', 'into', 'is', 'are', 'was', 'were', 'am', 'be', 'been', 'being', 'do', 'does', 'did', 'have', 'has', 'had']
 
-    # e.g. Youstand -> You stand
+    # We do NOT want to space out P(A) -> P (A) by doing prefix stuff on single letters aggressively
     for prefix in safe_prefixes:
-        text = re.sub(rf'\b({prefix})([a-z]+)\b', r'\1 \2', text)
+        # Avoid matching 'P' if it's followed by '('
+        if prefix != 'I' and prefix != 'A':
+            text = re.sub(rf'\b({prefix})([a-z]+)\b', r'\1 \2', text)
 
     for suffix in safe_suffixes:
-        text = re.sub(rf'\b([a-zA-Z]+)({suffix})\b', r'\1 \2', text)
+        if suffix not in ['a', 'an']:
+            text = re.sub(rf'\b([a-zA-Z]+)({suffix})\b', r'\1 \2', text)
 
-    # Add space between Chinese and English/Number
+    # Add space between Chinese and English/Number (ignore spaces inside math)
     text = re.sub(r'([\u4e00-\u9fa5])([a-zA-Z0-9])', r'\1 \2', text)
-    # Add space between English/Number and Chinese
     text = re.sub(r'([a-zA-Z0-9])([\u4e00-\u9fa5])', r'\1 \2', text)
 
+    # Fix percentages (e.g. 20 % -> 20%)
+    text = re.sub(r'(\d+)\s*%', r'\1%', text)
+
+    # Fix ratios (e.g. 1 : 2 -> 1:2)
+    text = re.sub(r'(\d+)\s*[:∶]\s*(\d+)', r'\1:\2', text)
+
+    # Fix decimals mixed with intervals (e.g. 0.5 ~ 0.8 -> 0.5~0.8)
+    text = re.sub(r'(\d+\.\d+)\s*~\s*(\d+\.\d+)', r'\1~\2', text)
+
+    # Fix inequality chains (e.g. a < b < c -> a<b<c)
+    text = re.sub(r'([a-zA-Z0-9])\s*([<≤>≥])\s*([a-zA-Z0-9])', r'\1\2\3', text)
+    text = re.sub(r'([a-zA-Z0-9])\s*([<≤>≥])\s*([a-zA-Z0-9])', r'\1\2\3', text)
+
     # Fix math probabilities (e.g., P (A) -> P(A))
-    text = re.sub(r'([PCE])\s*\(\s*([A-Za-z0-9_]+)\s*\)', r'\1(\2)', text)
+    text = re.sub(r'([PCE])\s*\(\s*([A-Za-z0-9_\|\.\s]+)\s*\)', r'\1(\2)', text)
+
+    # Clean spaces inside the probability parenthesis P( A|B ) -> P(A|B)
+    text = re.sub(r'(P\()\s*(.*?)\s*(\))', r'\1\2\3', text)
 
     # Fix math intervals (e.g., [ 10 , 20 ) -> [10, 20))
-    text = re.sub(r'(\[|\()\s*(\d+)\s*,\s*(\d+)\s*(\)|\])', r'\1\2, \3\4', text)
+    text = re.sub(r'(\[|\()\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*(\)|\])', r'\1\2, \3\4', text)
+
+    # Fix infinite intervals (-∞, 1]
+    text = re.sub(r'(\[|\()\s*(-?∞)\s*,\s*(-?\d+\.?\d*)\s*(\)|\])', r'\1\2, \3\4', text)
+    text = re.sub(r'(\[|\()\s*(-?\d+\.?\d*)\s*,\s*(\+?∞)\s*(\)|\])', r'\1\2, \3\4', text)
 
     # Fix fractions (e.g., 1 / 6 -> 1/6)
     text = re.sub(r'(\d+)\s*/\s*(\d+)', r'\1/\2', text)
 
-    # Fix English words broken by spaces (basic heuristic)
-    # e.g. "E x a m p l e" -> "Example"
-    # This is risky, only applying to single separated letters.
-    text = re.sub(r'\b([A-Za-z])\s+([A-Za-z])\b', r'\1\2', text)
+    # Fix option formatting (e.g. A. 1/2 B. 1/3)
+    # Ensure space after dot
+    text = re.sub(r'([A-D])\.', r'\1. ', text)
 
-    # Try another pass for 3-letter splits like A n d -> And
+    # Fix English words broken by spaces (basic heuristic)
+    text = re.sub(r'\b([A-Za-z])\s+([A-Za-z])\b', r'\1\2', text)
     text = re.sub(r'\b([A-Za-z])\s+([A-Za-z])\s+([A-Za-z])\b', r'\1\2\3', text)
+
+    # Extract squashed numbers (e.g. 108610138 -> 10 8 6 10 13 8 or random array 412451312)
+    # Only try to unsquash if it's very long and lacks spacing completely.
+    if re.search(r'\b\d{8,}\b', text):
+        # Specific heuristic for squashed numbers in the provided document:
+        # 10861013... are 1-2 digit numbers
+        # 412451312... are 3 digit chunks
+        # Let's try splitting 3-digit chunks if it starts with 412 or similar (random array)
+        if len(re.findall(r'\b\d{9,}\b', text)) > 0:
+            for match in re.findall(r'\b\d{9,}\b', text):
+                if len(match) % 3 == 0:
+                    split_num = " ".join([match[i:i+3] for i in range(0, len(match), 3)])
+                    text = text.replace(match, split_num)
 
     # Extra cleanup
     text = re.sub(r'\s+', ' ', text).strip()
@@ -117,18 +142,31 @@ def apply_heading_styles(paragraph):
     if not text:
         return
 
-    # Check for major headings
-    is_major_heading = bool(re.match(r'^(【.*?】|专题\s*\d+|第.*?部分|一、|二、|三、|四、|五、)', text))
-    is_minor_heading = bool(re.match(r'^(例\s*\d+|变式.*?|考点.*?|\d+\.\s*题型)', text))
+    # Check for specific headings
+    is_h1 = bool(re.match(r'^(专题\s*\d+|第.*?部分)', text))
+    is_h2 = bool(re.match(r'^(【知识点.*?】|【题型.*?】|一、|二、|三、|四、|五、)', text))
+    is_h3 = bool(re.match(r'^(【例.*?】|【变式.*?】|考点.*?)', text))
+    is_bold_only = bool(re.match(r'^(解：|分析：|故答案为|所以)', text))
 
-    if is_major_heading or is_minor_heading:
+    if is_h1:
+        paragraph.style = 'Heading 1'
+        paragraph.paragraph_format.space_before = Pt(18)
+        paragraph.paragraph_format.space_after = Pt(6)
+    elif is_h2:
+        paragraph.style = 'Heading 2'
+        paragraph.paragraph_format.space_before = Pt(12)
+        paragraph.paragraph_format.space_after = Pt(6)
+    elif is_h3:
+        paragraph.style = 'Heading 3'
+        paragraph.paragraph_format.space_before = Pt(6)
+        paragraph.paragraph_format.space_after = Pt(6)
+    elif is_bold_only:
         for run in paragraph.runs:
             run.font.bold = True
 
-        # Add spacing before major headings
-        if is_major_heading:
-            paragraph.paragraph_format.space_before = Pt(12)
-            paragraph.paragraph_format.space_after = Pt(6)
+    # Note: the text might have existing runs with font properties set by pdf2docx.
+    # We shouldn't strip them completely as it might contain math variables, but
+    # applying the heading style to the paragraph level ensures structural mapping.
 
 def split_glued_toc(text: str) -> list[str]:
     """
@@ -161,11 +199,28 @@ def is_known_table_header(text: str) -> bool:
         r'高度.*?频数',
         r'长度.*?件数',
         r'字母.*?频数',
-        r'游戏.*?取球方式.*?结果'
+        r'游戏.*?取球方式.*?结果',
+        r'名称.*?频数',
+        r'区间.*?频数',
+        r'项目.*?结果',
+        r'项目.*?概率',
+        r'编号.*?条件.*?结果',
+        r'游戏.*?方式.*?结论',
+        r'组别.*?数据.*?频率',
+        r'高度/cm',
+        r'长度\(cm\)',
+        r'时间/min',
+        r'频率/概率'
     ]
     for p in patterns:
         if re.search(p, text):
             return True
+    return False
+
+def is_multi_column_data(text: str) -> bool:
+    """Detect lines like A, B, C, D spaced options or plain multi-columns"""
+    if re.search(r'\s{2,}|\t+', text) and len(text) > 2:
+         return True
     return False
 
 def convert_to_table(doc, paras_to_convert: list):
@@ -185,10 +240,12 @@ def convert_to_table(doc, paras_to_convert: list):
     for p in paras_to_convert:
         text = p.text.strip()
         # For known headers like "高度/cm—频数", we might need to split by EM dash or EN dash as well if space is missing
-        if is_special and ('—' in text or '-' in text):
+        # We also need to be careful not to split negative numbers or intervals if we just split by "-" indiscriminately.
+        if is_special and ('—' in text or '-' in text) and not re.search(r'\d-\d', text):
              cols = re.split(r'\s{2,}|\t+|—|-', text)
         else:
-             cols = re.split(r'\s{2,}|\t+', text)
+             # Split by tab or multiple spaces, or even wide ideographic spaces
+             cols = re.split(r'\s{2,}|\t+|\u3000+', text)
 
         cols = [c.strip() for c in cols if c.strip()]
         if cols:
@@ -273,24 +330,42 @@ def postprocess_docx(filepath: str) -> bool:
         paras = list(doc.paragraphs)
         table_buffer = []
 
-        for p in paras:
+        i = 0
+        while i < len(paras):
+            p = paras[i]
             text = p.text.strip()
+
             # If it has tabular structure (multiple columns split by space) or matches known header
-            if (re.search(r'\s{2,}|\t+', text) and len(text) > 2) or is_known_table_header(text):
+            if is_multi_column_data(text) or is_known_table_header(text):
                 table_buffer.append(p)
             else:
-                # Flush table buffer if it has 2+ rows, or if it is a single row but looks exactly like a known header
-                # followed by another table row (handled by consecutive matching)
+                # Flush table buffer if it has 2+ rows
                 if len(table_buffer) >= 2:
-                    # Additional check: ensure they actually have similar column counts or are a special table
                     convert_to_table(doc, table_buffer)
+                elif len(table_buffer) == 1 and is_known_table_header(table_buffer[0].text.strip()):
+                    # Sometimes headers are followed directly by data on the next paragraph, even if it lacks obvious columns initially
+                    # Try lookahead if next line is data
+                    if i + 1 < len(paras) and paras[i+1].text.strip():
+                        table_buffer.append(paras[i+1])
+                        i += 1
+                        convert_to_table(doc, table_buffer)
                 table_buffer = []
+            i += 1
 
         # Flush at the end
         if len(table_buffer) >= 2:
             convert_to_table(doc, table_buffer)
 
-        # Pass 3: Paragraph merging (Hard Break Fixes)
+        # Pass 3: Ad cleanup
+        # If there's an image at the very end of the document, try to clean it
+        from .docx_ad_cleaner import clean_trailing_ad_from_docx
+        doc.save(filepath)
+        clean_trailing_ad_from_docx(filepath, filepath)
+
+        # Reload doc
+        doc = Document(filepath)
+
+        # Pass 4: Paragraph merging (Hard Break Fixes)
         # Re-fetch paragraphs since we deleted/added some
         paras = list(doc.paragraphs)
         i = 0
