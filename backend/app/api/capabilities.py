@@ -3,48 +3,9 @@ from typing import Dict, Any
 import subprocess
 import sys
 import os
+from ..utils.paddle_env import check_paddle_available
 
 router = APIRouter()
-
-_PADDLE_AVAILABLE_CACHE = None
-
-def is_paddle_available() -> bool:
-    global _PADDLE_AVAILABLE_CACHE
-    if _PADDLE_AVAILABLE_CACHE is not None:
-        return _PADDLE_AVAILABLE_CACHE
-
-    # check if .paddle_env exists in project root
-    # Project root should be one level up from backend
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    paddle_env_dir = os.path.join(base_dir, ".paddle_env")
-
-    if sys.platform.startswith("win"):
-        python_exe = os.path.join(paddle_env_dir, "Scripts", "python.exe")
-    else:
-        python_exe = os.path.join(paddle_env_dir, "bin", "python")
-
-    if not os.path.exists(python_exe):
-        _PADDLE_AVAILABLE_CACHE = False
-        return False
-
-    try:
-        # Check if paddle is importable and prints version successfully
-        result = subprocess.run(
-            [python_exe, "-c", "import paddle; print(paddle.__version__)"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=10
-        )
-        if result.returncode == 0:
-            _PADDLE_AVAILABLE_CACHE = True
-            return True
-        else:
-            _PADDLE_AVAILABLE_CACHE = False
-            return False
-    except Exception:
-        _PADDLE_AVAILABLE_CACHE = False
-        return False
 
 def is_pdf2docx_available() -> bool:
     try:
@@ -68,8 +29,10 @@ def is_libreoffice_available() -> bool:
 
 @router.get("/capabilities", summary="Get system capabilities and configurations", response_model=Dict[str, Any])
 async def get_capabilities() -> Dict[str, Any]:
+    paddle_avail, paddle_reason = check_paddle_available(use_cache=True)
     return {
-        "paddle_available": is_paddle_available(),
+        "paddle_available": paddle_avail,
+        "paddle_reason_if_unavailable": paddle_reason if not paddle_avail else None,
         "pdf2docx_available": is_pdf2docx_available(),
         "libreoffice_available": is_libreoffice_available(),
         "word_ad_removal_available": True,

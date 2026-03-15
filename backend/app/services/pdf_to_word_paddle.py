@@ -17,16 +17,11 @@ class PDFToWordPaddleService:
             raise FileNotFoundError(f"Input file not found: {input_path}")
 
         # Find the independent .paddle_env Python executable
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-        paddle_env_dir = os.path.join(base_dir, ".paddle_env")
+        from ..utils.paddle_env import get_paddle_python_path
+        python_exe = get_paddle_python_path()
 
-        if sys.platform.startswith("win"):
-            python_exe = os.path.join(paddle_env_dir, "Scripts", "python.exe")
-        else:
-            python_exe = os.path.join(paddle_env_dir, "bin", "python")
-
-        if not os.path.exists(python_exe):
-            raise Exception("未找到独立的 Paddle 环境 (.paddle_env)，请确保环境配置正确。")
+        if not python_exe or not os.path.exists(python_exe):
+            raise Exception("未找到独立的 Paddle 环境 (.paddle_env) 或指定路径不正确，请确保环境配置正确。")
 
         # The runner script
         runner_script = os.path.join(os.path.dirname(__file__), "run_paddle_ocr.py")

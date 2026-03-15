@@ -91,8 +91,19 @@
    - Windows: `.paddle_env\Scripts\activate`
    - Linux/Mac: `source .paddle_env/bin/activate`
 3. 在独立环境中安装轻量级 Paddle 相关依赖（以 Windows 下 RTX 4060 8GB 为例，具体版本请参考 Paddle 官网）：
-   `pip install paddlepaddle-gpu paddleocr python-docx PyMuPDF opencv-python-headless`
-4. 启动系统后，主后端会自动探测项目根目录下是否存在 `.paddle_env` 且能否成功引入 Paddle。如果探测成功，前端将允许用户选择“复杂版面引擎 (Paddle)”。如果转换失败或质量极差，系统具备内部降级兜底（Fallback）机制，会尝试回退到标准文本引擎。
+   `pip install paddlepaddle-gpu paddleocr python-docx PyMuPDF opencv-python-headless numpy`
+4. 启动系统后，主后端会自动探测项目根目录下是否存在 `.paddle_env` 且内部关键依赖（如 `paddle`, `fitz`, `docx`, `paddleocr.PPStructure` 等）是否全部可用。
+   
+   **注意：**
+   - `.paddle_env` 是本地隐藏环境，不会提交到 Git。在仓库视图中看不到它是正常现象。
+   - 默认路径是项目根目录下的 `.paddle_env`。
+   - 也支持通过环境变量自定义指定：
+     - `PADDLE_ENV_PYTHON`: 直接指定独立环境中 python 可执行文件的绝对路径。
+     - `PADDLE_ENV_DIR`: 指定独立环境的根目录。
+   - 如果 Paddle 探测可用，前端将允许用户选择“复杂版面引擎 (Paddle)”。
+   - **强制模式与降级机制**：
+     - 如果用户主动在前端**强制选择 Paddle 引擎**，但环境未正确配置或依赖损坏，转换提交时会**直接报错**拦截，不会静默处理。
+     - 如果用户选择的是 **Auto（自动模式）**，系统自动将复杂版面路由给 Paddle，此时如果 Paddle 后续抛出内存溢出等异常，或者转换质量极差，系统具备内部降级兜底（Fallback）机制，会尝试**降级回退到标准文本引擎 (`pdf2docx`)** 继续完成转换，并在最终任务结果内明确记录 `fallback_attempted`。
 
 ## 本地启动指南
 

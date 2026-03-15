@@ -9,6 +9,7 @@ import cv2
 
 def run_paddle_ocr(input_path, output_dir):
     try:
+        import paddle
         from paddleocr import PPStructure, save_structure_res
         import docx
     except ImportError as e:
@@ -21,11 +22,18 @@ def run_paddle_ocr(input_path, output_dir):
     os.makedirs(temp_dir, exist_ok=True)
 
     try:
+        # Determine GPU availability dynamically
+        use_gpu = False
+        try:
+            use_gpu = paddle.device.is_compiled_with_cuda() and paddle.device.get_device() != 'cpu'
+        except Exception:
+            pass
+
         engine = PPStructure(
             show_log=False,
             recovery=True,
             lang='ch',
-            use_gpu=False, # Use CPU or adjust if needed
+            use_gpu=use_gpu,
             layout=True,
             table=True,
             ocr=True

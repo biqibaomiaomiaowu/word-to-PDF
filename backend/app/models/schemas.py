@@ -46,6 +46,7 @@ class TaskInfo(BaseModel):
     route_reason: Optional[str] = None
     primary_converter: Optional[str] = None
     fallback_attempted: bool = False
+    fallback_reason: Optional[str] = None
 
     # Quality info (for PDF to Word)
     warnings: Optional[list[str]] = None
@@ -82,6 +83,7 @@ class TaskResponse(BaseModel):
     route_reason: Optional[str] = None
     primary_converter: Optional[str] = None
     fallback_attempted: bool = False
+    fallback_reason: Optional[str] = None
 
     # Quality info
     warnings: Optional[list[str]] = None

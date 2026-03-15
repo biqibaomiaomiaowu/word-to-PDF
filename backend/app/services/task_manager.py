@@ -12,7 +12,7 @@ from .pdf_to_word_paddle import PDFToWordPaddleService
 from .pdf_route_selector import PDFRouteSelector
 from ..models.schemas import TaskStatus, TaskInfo, ConversionType, ConverterMode
 from ..utils.pdf_processor import detect_and_remove_ad, detect_and_remove_ad_pre_conversion
-from ..api.capabilities import is_paddle_available
+from ..utils.paddle_env import check_paddle_available
 
 class TaskManager:
     def __init__(self):
@@ -162,9 +162,10 @@ class TaskManager:
                     converter = "pdf2docx"
                     reason = "User selected standard engine."
                 elif task_info.converter_mode == ConverterMode.PADDLE:
-                    if not is_paddle_available():
+                    paddle_available, reason = check_paddle_available(use_cache=True)
+                    if not paddle_available:
                         task_info.error_code = "conversion_failed"
-                        raise Exception("复杂版面引擎未配置，无法执行转换。")
+                        raise Exception(f"复杂版面引擎未配置，无法执行转换: {reason}")
                     converter = "paddle"
                     reason = "User forced complex layout engine."
                 else:
@@ -201,6 +202,7 @@ class TaskManager:
                     if converter == 'paddle' and quality_report.get("final_quality_level") in ["failed", "poor"]:
                         logger.warning(f"Paddle conversion produced poor quality or failed. Attempting fallback to pdf2docx for task {task_id}")
                         task_info.fallback_attempted = True
+                        task_info.fallback_reason = "quality_poor_or_failed"
 
                         fallback_out_dir = os.path.join(task_info.output_dir, "fallback")
                         os.makedirs(fallback_out_dir, exist_ok=True)
@@ -228,6 +230,7 @@ class TaskManager:
                     if converter == 'paddle':
                         logger.warning(f"Paddle conversion completely failed: {e}. Attempting fallback to pdf2docx for task {task_id}")
                         task_info.fallback_attempted = True
+                        task_info.fallback_reason = f"exception: {str(e)}"
                         task_info.converter_used = 'pdf2docx'
                         try:
                             output_filepath, quality_report = await perform_conversion('pdf2docx', conversion_input_path, task_info.output_dir)

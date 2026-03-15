@@ -10,7 +10,7 @@ from ..core.logger import logger
 from ..utils.file_validators import validate_file
 from ..services.task_manager import task_manager
 from ..models.schemas import TaskResponse, TaskStatus, ConversionType, ConverterMode
-from .capabilities import is_paddle_available
+from ..utils.paddle_env import check_paddle_available
 
 router = APIRouter()
 
@@ -25,11 +25,13 @@ async def upload_for_conversion(
     conversion_type: ConversionType = Form(ConversionType.WORD_TO_PDF, description="The type of conversion to perform"),
     converter_mode: ConverterMode = Form(ConverterMode.AUTO, description="The converter engine to use (PDF to Word only)")
 ):
-    if converter_mode == ConverterMode.PADDLE and not is_paddle_available():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="复杂版面引擎未配置，请切换为自动选择或标准文本引擎。"
-        )
+    if converter_mode == ConverterMode.PADDLE:
+        paddle_available, reason = check_paddle_available(use_cache=True)
+        if not paddle_available:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"复杂版面引擎未正确配置: {reason}"
+            )
 
     # 1. Validate file
     await validate_file(file, conversion_type)
@@ -61,7 +63,8 @@ async def upload_for_conversion(
         conversion_type=task_info.conversion_type,
         original_filename=task_info.original_filename,
         status=task_info.status,
-        created_at=task_info.created_at
+        created_at=task_info.created_at,
+        converter_mode=task_info.converter_mode
     )
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse, summary="Get conversion task status")
@@ -83,7 +86,23 @@ async def get_task_status(task_id: str):
         ad_removed=task_info.ad_removed,
         ad_remove_stage=task_info.ad_remove_stage,
         ad_remove_error=task_info.ad_remove_error,
-        warnings=task_info.warnings
+        converter_mode=task_info.converter_mode,
+        converter_used=task_info.converter_used,
+        route_reason=task_info.route_reason,
+        primary_converter=task_info.primary_converter,
+        fallback_attempted=task_info.fallback_attempted,
+        fallback_reason=task_info.fallback_reason,
+        warnings=task_info.warnings,
+        quality_warnings=task_info.quality_warnings,
+        final_quality_level=task_info.final_quality_level,
+        paragraph_recovery_score=task_info.paragraph_recovery_score,
+        table_recovery_score=task_info.table_recovery_score,
+        math_expression_score=task_info.math_expression_score,
+        numeric_list_recovery_score=task_info.numeric_list_recovery_score,
+        spacing_score=task_info.spacing_score,
+        character_cleanliness_score=task_info.character_cleanliness_score,
+        heading_structure_score=task_info.heading_structure_score,
+        image_anchor_risk=task_info.image_anchor_risk
     )
 
 @router.get("/download/{task_id}", summary="Download converted file")
