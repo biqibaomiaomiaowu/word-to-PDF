@@ -13,6 +13,18 @@ class LibreOfficeService:
         Converts a document to PDF using LibreOffice headless.
         Returns the path to the converted PDF file.
         """
+        return await LibreOfficeService._execute_conversion(input_path, output_dir, "pdf", None)
+
+    @staticmethod
+    async def convert_to_word(input_path: str, output_dir: str) -> str:
+        """
+        Converts a PDF document to Word (DOCX) using LibreOffice headless.
+        Returns the path to the converted DOCX file.
+        """
+        return await LibreOfficeService._execute_conversion(input_path, output_dir, "docx", "writer_pdf_import")
+
+    @staticmethod
+    async def _execute_conversion(input_path: str, output_dir: str, output_format: str, infilter: str = None) -> str:
         if not os.path.exists(input_path):
             raise ConversionError(f"Input file not found: {input_path}")
 
@@ -32,11 +44,17 @@ class LibreOfficeService:
             "--invisible",
             "--nologo",
             "--nodefault",
-            "--norestore",
-            "--convert-to", "pdf",
+            "--norestore"
+        ]
+
+        if infilter:
+            cmd.append(f"--infilter={infilter}")
+
+        cmd.extend([
+            "--convert-to", output_format,
             "--outdir", abs_output_dir,
             abs_input_path
-        ]
+        ])
 
         logger.info(f"Executing conversion command: {' '.join(cmd)}")
 
@@ -66,11 +84,11 @@ class LibreOfficeService:
             # Check if output file was created
             base_name = os.path.basename(input_path)
             name_without_ext = os.path.splitext(base_name)[0]
-            expected_output_path = os.path.join(output_dir, f"{name_without_ext}.pdf")
+            expected_output_path = os.path.join(output_dir, f"{name_without_ext}.{output_format}")
 
             if not os.path.exists(expected_output_path):
                 logger.error(f"Output file not found after conversion: {expected_output_path}")
-                raise ConversionError("Failed to generate PDF file.")
+                raise ConversionError(f"Failed to generate {output_format.upper()} file.")
 
             logger.info(f"Successfully converted {input_path} to {expected_output_path}")
             return expected_output_path

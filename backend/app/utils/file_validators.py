@@ -1,32 +1,45 @@
 from fastapi import UploadFile, HTTPException, status
 from ..core.config import settings
+from ..models.schemas import ConversionType
 
-ALLOWED_MIME_TYPES = [
+ALLOWED_MIME_TYPES_WORD = [
     "application/msword", # .doc
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document", # .docx
 ]
+ALLOWED_EXTENSIONS_WORD = [".doc", ".docx"]
 
-ALLOWED_EXTENSIONS = [".doc", ".docx"]
+ALLOWED_MIME_TYPES_PDF = ["application/pdf"]
+ALLOWED_EXTENSIONS_PDF = [".pdf"]
 
-async def validate_file(file: UploadFile) -> None:
+async def validate_file(file: UploadFile, conversion_type: ConversionType) -> None:
     # Check extension
     filename = file.filename or ""
     ext = ""
     if "." in filename:
         ext = f".{filename.rsplit('.', 1)[-1].lower()}"
 
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid file extension. Allowed extensions are: {', '.join(ALLOWED_EXTENSIONS)}"
-        )
-
-    # Check MIME type
-    if file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid file type: {file.content_type}. Only Word documents are allowed."
-        )
+    if conversion_type == ConversionType.WORD_TO_PDF:
+        if ext not in ALLOWED_EXTENSIONS_WORD:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid file extension. Allowed extensions for Word to PDF are: {', '.join(ALLOWED_EXTENSIONS_WORD)}"
+            )
+        if file.content_type not in ALLOWED_MIME_TYPES_WORD:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid file type: {file.content_type}. Only Word documents are allowed."
+            )
+    elif conversion_type == ConversionType.PDF_TO_WORD:
+        if ext not in ALLOWED_EXTENSIONS_PDF:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid file extension. Allowed extensions for PDF to Word are: {', '.join(ALLOWED_EXTENSIONS_PDF)}"
+            )
+        if file.content_type not in ALLOWED_MIME_TYPES_PDF:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid file type: {file.content_type}. Only PDF documents are allowed."
+            )
 
     # Check file size directly from the UploadFile object
     file_size = file.size

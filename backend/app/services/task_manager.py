@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from ..core.logger import logger
 from ..core.config import settings
 from .libreoffice import LibreOfficeService
-from ..models.schemas import TaskStatus, TaskInfo
+from ..models.schemas import TaskStatus, TaskInfo, ConversionType
 from ..utils.pdf_processor import detect_and_remove_ad
 
 class TaskManager:
@@ -32,7 +32,7 @@ class TaskManager:
                 pass
             logger.info("Task manager stopped.")
 
-    async def enqueue_task(self, original_filename: str, input_filepath: str, remove_ad: bool = True) -> str:
+    async def enqueue_task(self, original_filename: str, input_filepath: str, remove_ad: bool = True, conversion_type: ConversionType = ConversionType.WORD_TO_PDF) -> str:
         """Enqueues a new conversion task and returns its task ID."""
         task_id = str(uuid.uuid4())
 
@@ -42,12 +42,13 @@ class TaskManager:
 
         task_info = TaskInfo(
             task_id=task_id,
+            conversion_type=conversion_type,
             original_filename=original_filename,
             status=TaskStatus.PENDING,
             created_at=datetime.now(timezone.utc),
             input_filepath=input_filepath,
             output_dir=task_output_dir,
-            remove_ad=remove_ad
+            remove_ad=remove_ad if conversion_type == ConversionType.WORD_TO_PDF else False
         )
 
         self.tasks[task_id] = task_info
@@ -88,51 +89,62 @@ class TaskManager:
         try:
             conversion_input_path = task_info.input_filepath
             temp_cleaned_docx = None
+            output_filepath = None
 
-            task_info.ad_removal_enabled = task_info.remove_ad
+            logger.info(f"Processing task {task_id} with conversion type {task_info.conversion_type}")
 
-            # Stage 1: DOCX Pre-cleaning
-            if task_info.remove_ad:
-                from .docx_ad_cleaner import clean_trailing_ad_from_docx
-                from pathlib import Path
+            if task_info.conversion_type == ConversionType.WORD_TO_PDF:
+                task_info.ad_removal_enabled = task_info.remove_ad
 
-                temp_cleaned_docx = os.path.join(settings.OUTPUT_DIR, f"{task_id}_cleaned.docx")
-                try:
-                    is_cleaned = clean_trailing_ad_from_docx(
-                        Path(task_info.input_filepath),
-                        Path(temp_cleaned_docx)
-                    )
-                    if is_cleaned:
-                        conversion_input_path = temp_cleaned_docx
-                        task_info.ad_removed = True
-                        task_info.ad_remove_stage = "docx"
-                except Exception as docx_err:
-                    logger.warning(f"DOCX pre-cleaning failed for task {task_id}: {docx_err}")
-                    task_info.ad_remove_error = f"DOCX Stage Error: {docx_err}"
+                # Stage 1: DOCX Pre-cleaning
+                if task_info.remove_ad:
+                    from .docx_ad_cleaner import clean_trailing_ad_from_docx
+                    from pathlib import Path
 
-            # Execute conversion
-            output_pdf_path = await LibreOfficeService.convert_to_pdf(
-                input_path=conversion_input_path,
-                output_dir=task_info.output_dir
-            )
+                    temp_cleaned_docx = os.path.join(settings.OUTPUT_DIR, f"{task_id}_cleaned.docx")
+                    try:
+                        is_cleaned = clean_trailing_ad_from_docx(
+                            Path(task_info.input_filepath),
+                            Path(temp_cleaned_docx)
+                        )
+                        if is_cleaned:
+                            conversion_input_path = temp_cleaned_docx
+                            task_info.ad_removed = True
+                            task_info.ad_remove_stage = "docx"
+                    except Exception as docx_err:
+                        logger.warning(f"DOCX pre-cleaning failed for task {task_id}: {docx_err}")
+                        task_info.ad_remove_error = f"DOCX Stage Error: {docx_err}"
 
-            # Stage 2: PDF Fallback Cleaning
-            if task_info.remove_ad and not task_info.ad_removed:
-                try:
-                    is_cleaned_pdf = detect_and_remove_ad(output_pdf_path)
-                    if is_cleaned_pdf:
-                        task_info.ad_removed = True
-                        task_info.ad_remove_stage = "pdf"
-                except Exception as ad_err:
-                    logger.warning(f"Failed to remove ad in PDF stage for task {task_id}: {ad_err}")
-                    if not task_info.ad_remove_error:
-                        task_info.ad_remove_error = f"PDF Stage Error: {ad_err}"
-                    else:
-                        task_info.ad_remove_error += f" | PDF Stage Error: {ad_err}"
+                # Execute conversion
+                output_filepath = await LibreOfficeService.convert_to_pdf(
+                    input_path=conversion_input_path,
+                    output_dir=task_info.output_dir
+                )
+
+                # Stage 2: PDF Fallback Cleaning
+                if task_info.remove_ad and not task_info.ad_removed:
+                    try:
+                        is_cleaned_pdf = detect_and_remove_ad(output_filepath)
+                        if is_cleaned_pdf:
+                            task_info.ad_removed = True
+                            task_info.ad_remove_stage = "pdf"
+                    except Exception as ad_err:
+                        logger.warning(f"Failed to remove ad in PDF stage for task {task_id}: {ad_err}")
+                        if not task_info.ad_remove_error:
+                            task_info.ad_remove_error = f"PDF Stage Error: {ad_err}"
+                        else:
+                            task_info.ad_remove_error += f" | PDF Stage Error: {ad_err}"
+
+            elif task_info.conversion_type == ConversionType.PDF_TO_WORD:
+                task_info.ad_removal_enabled = False
+                output_filepath = await LibreOfficeService.convert_to_word(
+                    input_path=conversion_input_path,
+                    output_dir=task_info.output_dir
+                )
 
             task_info.status = TaskStatus.COMPLETED
             task_info.completed_at = datetime.now(timezone.utc)
-            task_info.output_filepath = output_pdf_path
+            task_info.output_filepath = output_filepath
 
             # Clean up the input files
             try:

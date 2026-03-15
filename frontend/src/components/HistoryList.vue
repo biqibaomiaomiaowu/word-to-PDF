@@ -62,12 +62,16 @@ const handleRemove = (taskId) => {
             <p class="text-sm font-medium text-gray-900 truncate" :title="item.original_filename">
               {{ item.original_filename }}
             </p>
-            <div class="flex items-center gap-3 mt-1">
+            <div class="flex flex-wrap items-center gap-2 mt-1">
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 font-medium whitespace-nowrap">
+                {{ item.conversion_type === 'pdf_to_word' ? 'PDF 转 Word' : 'Word 转 PDF' }}
+              </span>
+
               <span class="text-xs font-semibold" :class="statusColorText(item.status)">
                 {{ statusLabel(item.status) }}
               </span>
 
-              <template v-if="item.status === 'completed' && item.ad_removal_enabled">
+              <template v-if="item.status === 'completed' && item.ad_removal_enabled && item.conversion_type === 'word_to_pdf'">
                 <span v-if="item.ad_removed && item.ad_remove_stage === 'docx'" class="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 border border-green-100">
                   去除广告(DOCX)
                 </span>

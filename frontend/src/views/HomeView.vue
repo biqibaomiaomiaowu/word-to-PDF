@@ -66,12 +66,15 @@ onUnmounted(() => {
   stopAllPolling()
 })
 
+const conversionType = ref('pdf_to_word') // default to new functionality
+
 const handleFilesSelected = async (files, removeAd) => {
   errorMessage.value = null
 
   // Create placeholders for uploading files
   const newTasks = files.map((file, index) => ({
     _localId: Date.now() + index, // temporary ID before we get real task_id
+    conversion_type: conversionType.value,
     original_filename: file.name,
     status: 'uploading',
     uploadProgress: 0,
@@ -83,7 +86,7 @@ const handleFilesSelected = async (files, removeAd) => {
   // Upload concurrently
   const uploadPromises = newTasks.map(async (localTask) => {
     try {
-      const response = await api.convertFile(localTask.file, removeAd, (progressEvent) => {
+      const response = await api.convertFile(localTask.file, removeAd, localTask.conversion_type, (progressEvent) => {
         if (progressEvent.total) {
           const taskIndex = currentTasks.value.findIndex(t => t._localId === localTask._localId)
           if (taskIndex !== -1) {
@@ -131,6 +134,23 @@ const clearCurrentTasks = () => {
 
 <template>
   <div class="w-full max-w-2xl mx-auto flex flex-col gap-6">
+
+    <!-- Tab Switcher -->
+    <div class="flex justify-center bg-gray-100 p-1 rounded-xl w-fit mx-auto shadow-sm">
+      <button
+        @click="conversionType = 'pdf_to_word'"
+        :class="['px-6 py-2 rounded-lg text-sm font-medium transition-colors duration-200', conversionType === 'pdf_to_word' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700']"
+      >
+        PDF 转 Word
+      </button>
+      <button
+        @click="conversionType = 'word_to_pdf'"
+        :class="['px-6 py-2 rounded-lg text-sm font-medium transition-colors duration-200', conversionType === 'word_to_pdf' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700']"
+      >
+        Word 转 PDF
+      </button>
+    </div>
+
     <!-- Main Conversion Area -->
     <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 relative">
       <!-- Back button when task is present to do another conversion -->
@@ -171,6 +191,7 @@ const clearCurrentTasks = () => {
 
         <!-- Append new files to existing list -->
         <UploadZone
+          :conversionType="conversionType"
           @files-selected="handleFilesSelected"
         />
       </template>
@@ -178,6 +199,7 @@ const clearCurrentTasks = () => {
       <!-- Upload Zone when empty -->
       <UploadZone
         v-else
+        :conversionType="conversionType"
         @files-selected="handleFilesSelected"
       />
 

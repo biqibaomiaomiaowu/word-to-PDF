@@ -9,8 +9,13 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+class ConversionType(str, Enum):
+    WORD_TO_PDF = "word_to_pdf"
+    PDF_TO_WORD = "pdf_to_word"
+
 class TaskInfo(BaseModel):
     task_id: str
+    conversion_type: ConversionType = ConversionType.WORD_TO_PDF
     original_filename: str
     status: TaskStatus
     created_at: datetime
@@ -31,6 +36,7 @@ class TaskInfo(BaseModel):
 
 class TaskResponse(BaseModel):
     task_id: str
+    conversion_type: ConversionType = ConversionType.WORD_TO_PDF
     original_filename: str
     status: TaskStatus
     created_at: datetime
