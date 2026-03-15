@@ -35,6 +35,12 @@ class TaskInfo(BaseModel):
     ad_remove_stage: Optional[str] = None
     ad_remove_error: Optional[str] = None
 
+    # Route info
+    converter_used: Optional[str] = None
+    route_reason: Optional[str] = None
+    primary_converter: Optional[str] = None
+    fallback_attempted: bool = False
+
     # Quality info (for PDF to Word)
     warnings: Optional[list[str]] = None
     quality_warnings: Optional[list[str]] = None
@@ -63,6 +69,12 @@ class TaskResponse(BaseModel):
     ad_removed: bool = False
     ad_remove_stage: Optional[str] = None
     ad_remove_error: Optional[str] = None
+
+    # Route info
+    converter_used: Optional[str] = None
+    route_reason: Optional[str] = None
+    primary_converter: Optional[str] = None
+    fallback_attempted: bool = False
 
     # Quality info
     warnings: Optional[list[str]] = None

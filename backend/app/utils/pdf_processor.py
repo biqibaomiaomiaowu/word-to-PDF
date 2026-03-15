@@ -75,6 +75,74 @@ def detect_large_ad_image(page: fitz.Page) -> float | None:
 
     return crop_y0
 
+def detect_and_remove_ad_pre_conversion(pdf_path: str, output_path: str) -> bool:
+    """
+    Detects if the last page has an ad. If it does, removes/crops it and saves to output_path.
+    Used for pre-processing before PDF->Word conversion.
+    Returns True if ad was found and removed, False otherwise.
+    """
+    try:
+        doc = fitz.open(pdf_path)
+        if doc.page_count == 0:
+            doc.close()
+            return False
+
+        last_page_idx = doc.page_count - 1
+        page = doc[last_page_idx]
+        page_rect = page.rect
+        page_height = page_rect.height
+
+        crop_y_threshold = page_height * 0.45
+        bottom_rect = fitz.Rect(0, crop_y_threshold, page_rect.width, page_height)
+        text = page.get_text("text", clip=bottom_rect).replace("\n", "").replace(" ", "")
+
+        is_ad = False
+        ad_crop_y = None
+
+        if contains_strong_keyword(text) or contains_combinations(text):
+            is_ad = True
+            ad_crop_y = crop_y_threshold
+
+        if not is_ad:
+            image_crop_y = detect_large_ad_image(page)
+            if image_crop_y is not None:
+                is_ad = True
+                ad_crop_y = image_crop_y
+
+        if is_ad:
+            safe_crop_y = max(0, ad_crop_y - 5)
+            top_rect = fitz.Rect(0, 0, page_rect.width, safe_crop_y)
+            top_text = page.get_text("text", clip=top_rect).strip()
+
+            has_top_images = False
+            for img in page.get_images(full=True):
+                xref = img[0]
+                rects = page.get_image_rects(xref)
+                for rect in rects:
+                    if rect.y0 < safe_crop_y and rect.y1 > 0:
+                        has_top_images = True
+                        break
+                if has_top_images:
+                    break
+
+            if not top_text and not has_top_images:
+                doc.delete_page(last_page_idx)
+                logger.info(f"Pre-conversion: Deleted last page of {pdf_path} due to ad.")
+            else:
+                page.set_cropbox(top_rect)
+                logger.info(f"Pre-conversion: Cropped last page of {pdf_path} to remove ad at y={safe_crop_y}.")
+
+            doc.save(output_path)
+            doc.close()
+            return True
+
+        doc.close()
+        return False
+
+    except Exception as e:
+        logger.error(f"Error processing PDF for pre-conversion ad removal {pdf_path}: {e}")
+        return False
+
 def detect_and_remove_ad(pdf_path: str) -> bool:
     """
     Detects if the last page has an ad at the bottom.

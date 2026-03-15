@@ -7,9 +7,11 @@ from datetime import datetime, timezone
 from ..core.logger import logger
 from ..core.config import settings
 from .libreoffice import LibreOfficeService
-from .pdf_to_word import PDFToWordService
+from .pdf_to_word_pdf2docx import PDFToWordService
+from .pdf_to_word_paddle import PDFToWordPaddleService
+from .pdf_route_selector import PDFRouteSelector
 from ..models.schemas import TaskStatus, TaskInfo, ConversionType
-from ..utils.pdf_processor import detect_and_remove_ad
+from ..utils.pdf_processor import detect_and_remove_ad, detect_and_remove_ad_pre_conversion
 
 class TaskManager:
     def __init__(self):
@@ -137,25 +139,88 @@ class TaskManager:
                             task_info.ad_remove_error += f" | PDF Stage Error: {ad_err}"
 
             elif task_info.conversion_type == ConversionType.PDF_TO_WORD:
-                task_info.ad_removal_enabled = False
-                logger.info(f"Using pdf2docx for conversion task {task_id}")
+                task_info.ad_removal_enabled = task_info.remove_ad
+
+                # Pre-processing: Ad Removal
+                if task_info.remove_ad:
+                    logger.info(f"Checking for ad pages in {conversion_input_path} (pre-conversion)")
+                    cleaned_pdf_path = os.path.join(task_info.output_dir, f"{task_id}_no_ad.pdf")
+                    is_ad_removed = detect_and_remove_ad_pre_conversion(conversion_input_path, cleaned_pdf_path)
+
+                    if is_ad_removed:
+                        logger.info(f"Ad page removed, using {cleaned_pdf_path} for conversion.")
+                        conversion_input_path = cleaned_pdf_path
+                        task_info.ad_removed = True
+                        task_info.ad_remove_stage = "pdf_pre_conversion"
+
+                # Routing Logic
+                converter, reason, stats = PDFRouteSelector.analyze_pdf(conversion_input_path)
+                task_info.primary_converter = converter
+                task_info.converter_used = converter
+                task_info.route_reason = reason
+
+                logger.info(f"PDF Routing Decision for task {task_id}: {converter} - Reason: {reason}")
+
+                from ..utils.docx_validator import validate_docx_quality
+                from .docx_postprocessor import postprocess_docx
+
+                async def perform_conversion(engine_type: str, input_file: str, out_dir: str):
+                    """Helper to execute conversion + postprocess + validation"""
+                    if engine_type == 'paddle':
+                        out_path = await PDFToWordPaddleService.convert_to_word(input_file, out_dir)
+                    else:
+                        out_path = await PDFToWordService.convert_to_word(input_file, out_dir)
+
+                    if engine_type == 'pdf2docx':
+                        postprocess_docx(out_path)
+
+                    # Validate quality
+                    report = validate_docx_quality(out_path)
+                    return out_path, report
 
                 try:
-                    output_filepath = await PDFToWordService.convert_to_word(
-                        input_path=conversion_input_path,
-                        output_dir=task_info.output_dir
-                    )
+                    output_filepath, quality_report = await perform_conversion(converter, conversion_input_path, task_info.output_dir)
+
+                    # Limited fallback mechanism for Paddle
+                    if converter == 'paddle' and quality_report.get("final_quality_level") in ["failed", "poor"]:
+                        logger.warning(f"Paddle conversion produced poor quality or failed. Attempting fallback to pdf2docx for task {task_id}")
+                        task_info.fallback_attempted = True
+
+                        fallback_out_dir = os.path.join(task_info.output_dir, "fallback")
+                        os.makedirs(fallback_out_dir, exist_ok=True)
+
+                        try:
+                            fb_out_path, fb_report = await perform_conversion('pdf2docx', conversion_input_path, fallback_out_dir)
+
+                            fb_score = fb_report.get("paragraph_recovery_score", 0) + fb_report.get("table_recovery_score", 0)
+                            primary_score = quality_report.get("paragraph_recovery_score", 0) + quality_report.get("table_recovery_score", 0)
+
+                            if fb_score > primary_score or quality_report.get("final_quality_level") == "failed":
+                                logger.info(f"Fallback to pdf2docx produced better results. Using fallback.")
+                                output_filepath = fb_out_path
+                                quality_report = fb_report
+                                task_info.converter_used = 'pdf2docx'
+                            else:
+                                logger.info(f"Fallback to pdf2docx did not improve results. Keeping Paddle output.")
+
+                        except Exception as fb_err:
+                            logger.error(f"Fallback conversion failed: {fb_err}", exc_info=True)
+                            if quality_report.get("final_quality_level") == "failed":
+                                raise Exception(quality_report.get("warnings", ["Unknown quality error"])[0])
+
                 except Exception as e:
-                    task_info.error_code = "conversion_failed"
-                    raise Exception(f"转换失败：PDF 内容解析失败。")
-
-                # Post-process to fix hard breaks and common layout issues
-                from .docx_postprocessor import postprocess_docx
-                postprocess_docx(output_filepath)
-
-                # DOCX Quality Validation
-                from ..utils.docx_validator import validate_docx_quality
-                quality_report = validate_docx_quality(output_filepath)
+                    if converter == 'paddle':
+                        logger.warning(f"Paddle conversion completely failed: {e}. Attempting fallback to pdf2docx for task {task_id}")
+                        task_info.fallback_attempted = True
+                        task_info.converter_used = 'pdf2docx'
+                        try:
+                            output_filepath, quality_report = await perform_conversion('pdf2docx', conversion_input_path, task_info.output_dir)
+                        except Exception as fallback_e:
+                            task_info.error_code = "conversion_failed"
+                            raise Exception(f"主路线与备用路线转换均失败。最后错误: {str(fallback_e)}")
+                    else:
+                        task_info.error_code = "conversion_failed"
+                        raise Exception(f"转换失败：PDF 内容解析失败。错误信息: {str(e)}")
 
                 if quality_report.get("final_quality_level") == "failed":
                     task_info.error_code = "quality_validation_failed"
