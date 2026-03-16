@@ -1,3 +1,12 @@
+from pathlib import Path as _BootstrapPath
+import sys as _BootstrapSys
+
+if __name__ == "__main__":
+    _BootstrapSys.path.insert(0, str(_BootstrapPath(__file__).resolve().parent / "scripts"))
+    from start_all_bootstrap_v2 import main as _bootstrap_main
+
+    raise SystemExit(_bootstrap_main())
+
 import os
 import sys
 import subprocess

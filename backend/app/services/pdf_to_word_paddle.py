@@ -6,6 +6,15 @@ import subprocess
 from typing import Optional
 from ..core.logger import logger
 
+
+def _decode_output(data: bytes | str | None) -> str:
+    if data is None:
+        return ""
+    if isinstance(data, str):
+        return data
+    return data.decode("utf-8", errors="replace")
+
+
 class PDFToWordPaddleService:
     @staticmethod
     async def convert_to_word(input_path: str, output_dir: str) -> str:
@@ -17,43 +26,55 @@ class PDFToWordPaddleService:
             raise FileNotFoundError(f"Input file not found: {input_path}")
 
         # Find the independent .paddle_env Python executable
-        from ..utils.paddle_env import get_paddle_python_path
+        from ..utils.paddle_runtime import build_paddle_env, get_paddle_python_path
         python_exe = get_paddle_python_path()
 
         if not python_exe or not os.path.exists(python_exe):
             raise Exception("未找到独立的 Paddle 环境 (.paddle_env) 或指定路径不正确，请确保环境配置正确。")
 
-        # The runner script
-        runner_script = os.path.join(os.path.dirname(__file__), "run_paddle_ocr.py")
+        # Use the structured PPStructureV3 runner for complex-layout recovery.
+        runner_script = os.path.join(os.path.dirname(__file__), "run_paddle_structure_v4.py")
+        paddle_env = build_paddle_env()
+        crash_return_codes = {3221225477, -1073741819}
 
-        def _convert():
-            logger.info(f"Starting PaddleOCR subprocess for {input_path} -> {output_dir}")
-
+        def _run_runner(device: str | None):
             cmd = [
                 python_exe,
                 runner_script,
                 "--input", input_path,
                 "--output_dir", output_dir
             ]
+            if device:
+                cmd.extend(["--device", device])
+            return subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=3600,
+                env=paddle_env,
+            )
+
+        def _convert():
+            logger.info(f"Starting PaddleOCR subprocess for {input_path} -> {output_dir}")
 
             try:
-                # Run the subprocess and capture the output
-                result = subprocess.run(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    timeout=3600  # 1 hour timeout
-                )
+                result = _run_runner(None)
+                if result.returncode in crash_return_codes:
+                    logger.warning(
+                        "Paddle subprocess crashed with native return code %s. Retrying on CPU.",
+                        result.returncode,
+                    )
+                    result = _run_runner("cpu")
 
                 # We expect the last line (or all of stdout) to be a JSON string
-                output_str = result.stdout.strip()
+                output_str = _decode_output(result.stdout).strip()
+                stderr_str = _decode_output(result.stderr).strip()
                 json_start = output_str.rfind("{")
                 json_end = output_str.rfind("}")
 
                 if result.returncode != 0 and json_start == -1:
-                    logger.error(f"Paddle subprocess failed with return code {result.returncode}. Stderr: {result.stderr}")
-                    raise Exception(f"复杂版面引擎崩溃: {result.stderr}")
+                    logger.error(f"Paddle subprocess failed with return code {result.returncode}. Stderr: {stderr_str}")
+                    raise Exception(f"复杂版面引擎崩溃: {stderr_str}")
 
                 if json_start != -1 and json_end != -1:
                     json_str = output_str[json_start:json_end+1]

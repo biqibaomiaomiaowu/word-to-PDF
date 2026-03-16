@@ -10,7 +10,7 @@ from ..core.logger import logger
 from ..utils.file_validators import validate_file
 from ..services.task_manager import task_manager
 from ..models.schemas import TaskResponse, TaskStatus, ConversionType, ConverterMode
-from ..utils.paddle_env import check_paddle_available
+from ..utils.paddle_runtime import check_paddle_available
 
 router = APIRouter()
 

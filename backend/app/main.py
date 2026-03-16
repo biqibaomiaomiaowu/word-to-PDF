@@ -22,12 +22,15 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
 
     # Pre-check Paddle availability on startup
-    from .utils.paddle_env import force_refresh_paddle_check
+    from .utils.paddle_runtime import get_paddle_capabilities
     import threading
     import asyncio
     # Run it in a thread to not block the main event loop startup for 8s
     def pre_check():
-        force_refresh_paddle_check()
+        try:
+            get_paddle_capabilities(use_cache=False)
+        except Exception:
+            pass
     threading.Thread(target=pre_check, daemon=True).start()
 
     # Start background tasks

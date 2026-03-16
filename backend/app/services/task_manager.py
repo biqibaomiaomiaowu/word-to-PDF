@@ -12,7 +12,7 @@ from .pdf_to_word_paddle import PDFToWordPaddleService
 from .pdf_route_selector import PDFRouteSelector
 from ..models.schemas import TaskStatus, TaskInfo, ConversionType, ConverterMode
 from ..utils.pdf_processor import detect_and_remove_ad, detect_and_remove_ad_pre_conversion
-from ..utils.paddle_env import check_paddle_available
+from ..utils.paddle_runtime import check_paddle_available
 
 class TaskManager:
     def __init__(self):
@@ -158,11 +158,19 @@ class TaskManager:
                 # Routing Logic
                 if task_info.converter_mode == ConverterMode.AUTO:
                     converter, reason, stats = PDFRouteSelector.analyze_pdf(conversion_input_path)
+                    if converter == "paddle":
+                        paddle_available, paddle_reason = check_paddle_available(
+                            use_cache=True,
+                            require_structure=True,
+                        )
+                        if not paddle_available:
+                            converter = "pdf2docx"
+                            reason = f"{reason} | Paddle structure engine unavailable, falling back to standard engine: {paddle_reason}"
                 elif task_info.converter_mode == ConverterMode.PDF2DOCX:
                     converter = "pdf2docx"
                     reason = "User selected standard engine."
                 elif task_info.converter_mode == ConverterMode.PADDLE:
-                    paddle_available, reason = check_paddle_available(use_cache=True)
+                    paddle_available, reason = check_paddle_available(use_cache=True, require_structure=True)
                     if not paddle_available:
                         task_info.error_code = "conversion_failed"
                         raise Exception(f"复杂版面引擎未配置，无法执行转换: {reason}")
@@ -188,8 +196,7 @@ class TaskManager:
                     else:
                         out_path = await PDFToWordService.convert_to_word(input_file, out_dir)
 
-                    if engine_type == 'pdf2docx':
-                        postprocess_docx(out_path)
+                    postprocess_docx(out_path)
 
                     # Validate quality
                     report = validate_docx_quality(out_path)
@@ -198,13 +205,11 @@ class TaskManager:
                 try:
                     output_filepath, quality_report = await perform_conversion(converter, conversion_input_path, task_info.output_dir)
 
-                    # Limited fallback mechanism for Paddle
-                    # Paddle 3.x OCR 模式目前主要提取文本，经常会被打上 "poor" 标签（因为缺少表格等特征）。
-                    # 为了防止用户强制选择的引擎被回退，此处只在 "failed" 时进行回退。
-                    if converter == 'paddle' and quality_report.get("final_quality_level") in ["failed"]:
-                        logger.warning(f"Paddle conversion produced poor quality or failed. Attempting fallback to pdf2docx for task {task_id}")
+                    # Paddle outputs should fall back once the quality validator already says the result is not usable.
+                    if converter == 'paddle' and quality_report.get("final_quality_level") in ["poor", "failed"]:
+                        logger.warning(f"Paddle conversion produced {quality_report.get('final_quality_level')} quality. Attempting fallback to pdf2docx for task {task_id}")
                         task_info.fallback_attempted = True
-                        task_info.fallback_reason = "quality_poor_or_failed"
+                        task_info.fallback_reason = f"quality_{quality_report.get('final_quality_level')}"
 
                         fallback_out_dir = os.path.join(task_info.output_dir, "fallback")
                         os.makedirs(fallback_out_dir, exist_ok=True)
