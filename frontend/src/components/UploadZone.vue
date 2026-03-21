@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 const emit = defineEmits(['files-selected'])
 const props = defineProps({
@@ -18,6 +18,10 @@ const fileInput = ref(null)
 const defaultRemoveAd = import.meta.env.VITE_DEFAULT_REMOVE_AD !== 'false'
 const removeAd = ref(defaultRemoveAd)
 const converterMode = ref('auto')
+
+watch(() => props.conversionType, () => {
+  converterMode.value = 'auto'
+})
 
 const handleDragOver = (e) => {
   e.preventDefault()
@@ -146,6 +150,32 @@ const validateAndEmit = (files) => {
           </label>
         </div>
         <p v-if="converterMode === 'auto' && capabilities && capabilities.paddle_available === false" class="text-xs text-yellow-600 mt-1">当前未配置复杂版面引擎，自动选择将仅使用标准文本引擎。</p>
+      </div>
+
+      <!-- Word to PDF Options -->
+      <div v-if="props.conversionType === 'word_to_pdf'" class="flex flex-col gap-2">
+        <label class="text-sm font-medium text-gray-700">Export Engine</label>
+        <div class="flex flex-wrap gap-4">
+          <label class="inline-flex items-center">
+            <input type="radio" v-model="converterMode" value="auto" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500">
+            <span class="ml-2 text-sm text-gray-700">Auto</span>
+          </label>
+          <label class="inline-flex items-center">
+            <input type="radio" v-model="converterMode" value="libreoffice" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500">
+            <span class="ml-2 text-sm text-gray-700">LibreOffice</span>
+          </label>
+          <label class="inline-flex items-center" :class="{ 'opacity-50 cursor-not-allowed': capabilities && capabilities.word_com_available === false }">
+            <input type="radio" v-model="converterMode" value="word" :disabled="capabilities && capabilities.word_com_available === false" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500">
+            <span class="ml-2 text-sm text-gray-700">Microsoft Word</span>
+            <span v-if="capabilities && capabilities.word_com_available === false" class="ml-1 text-xs text-red-500">(Unavailable)</span>
+          </label>
+        </div>
+        <p v-if="converterMode === 'auto' && capabilities && capabilities.word_com_available === false" class="text-xs text-yellow-600 mt-1">
+          Auto mode will stay on LibreOffice because Microsoft Word export is unavailable.
+        </p>
+        <p v-else-if="converterMode === 'auto'" class="text-xs text-gray-500 mt-1">
+          Auto mode prefers Microsoft Word when formula risk is detected, otherwise it uses LibreOffice.
+        </p>
       </div>
 
       <!-- Ad Removal Option -->

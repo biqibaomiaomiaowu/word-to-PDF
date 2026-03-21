@@ -9,7 +9,9 @@ from ..core.config import settings
 from ..core.logger import logger
 from ..utils.file_validators import validate_file
 from ..services.task_manager import task_manager
+from ..services.word_com import get_word_com_availability
 from ..models.schemas import TaskResponse, TaskStatus, ConversionType, ConverterMode
+from ..utils.converter_modes import build_invalid_converter_mode_message, is_converter_mode_supported
 from ..utils.paddle_runtime import check_paddle_available
 
 router = APIRouter()
@@ -23,14 +25,28 @@ async def upload_for_conversion(
     file: UploadFile = File(...),
     remove_ad: bool = Form(True, description="Whether to detect and remove ads from the last page"),
     conversion_type: ConversionType = Form(ConversionType.WORD_TO_PDF, description="The type of conversion to perform"),
-    converter_mode: ConverterMode = Form(ConverterMode.AUTO, description="The converter engine to use (PDF to Word only)")
+    converter_mode: ConverterMode = Form(ConverterMode.AUTO, description="The converter engine to use")
 ):
+    if not is_converter_mode_supported(conversion_type, converter_mode):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=build_invalid_converter_mode_message(conversion_type, converter_mode)
+        )
+
     if converter_mode == ConverterMode.PADDLE:
         paddle_available, reason = check_paddle_available(use_cache=True)
         if not paddle_available:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"复杂版面引擎未正确配置: {reason}"
+            )
+
+    if conversion_type == ConversionType.WORD_TO_PDF and converter_mode == ConverterMode.WORD:
+        word_available, reason = get_word_com_availability()
+        if not word_available:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Microsoft Word export is unavailable: {reason}"
             )
 
     # 1. Validate file

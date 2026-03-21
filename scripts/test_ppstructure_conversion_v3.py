@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -55,11 +56,76 @@ def find_default_pdf(repo_root: Path) -> Path | None:
     return None
 
 
+def normalize_preview_text(text: str) -> str:
+    return " ".join((text or "").replace("\xa0", " ").split())
+
+
+def collapse_obvious_repetition(text: str) -> str:
+    compact = normalize_preview_text(text)
+    if not compact:
+        return ""
+
+    max_unit = len(compact) // 2
+    for unit_len in range(1, max_unit + 1):
+        if len(compact) % unit_len != 0:
+            continue
+        unit = compact[:unit_len]
+        repeat_count = len(compact) // unit_len
+        if repeat_count >= 2 and unit * repeat_count == compact:
+            return unit.strip()
+    return compact
+
+
+def extract_docx_paragraphs(docx_path: Path) -> list[str]:
+    with ZipFile(docx_path) as archive:
+        xml_bytes = archive.read("word/document.xml")
+
+    root = ET.fromstring(xml_bytes)
+    namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    paragraphs: list[str] = []
+    for paragraph in root.findall(".//w:p", namespaces):
+        text = "".join(node.text or "" for node in paragraph.findall(".//w:t", namespaces))
+        text = normalize_preview_text(text)
+        if text:
+            paragraphs.append(text)
+    return paragraphs
+
+
+def collect_duplicate_paragraph_examples(paragraphs: list[str], limit: int = 10) -> list[dict]:
+    duplicates: list[dict] = []
+    previous = ""
+    for index, text in enumerate(paragraphs):
+        collapsed = collapse_obvious_repetition(text)
+        if collapsed and collapsed != text:
+            duplicates.append(
+                {
+                    "index": index,
+                    "kind": "self_repeated",
+                    "text": text[:180],
+                    "collapsed": collapsed[:180],
+                }
+            )
+        elif previous and text == previous:
+            duplicates.append(
+                {
+                    "index": index,
+                    "kind": "adjacent_duplicate",
+                    "text": text[:180],
+                }
+            )
+        previous = text
+        if len(duplicates) >= limit:
+            break
+    return duplicates
+
+
 def inspect_docx(docx_path: Path) -> dict:
     with ZipFile(docx_path) as archive:
         names = archive.namelist()
         media = [name for name in names if name.startswith("word/media/")]
         xml = archive.read("word/document.xml").decode("utf-8", errors="replace")
+    paragraphs = extract_docx_paragraphs(docx_path)
+    duplicate_examples = collect_duplicate_paragraph_examples(paragraphs)
 
     return {
         "docx_path": str(docx_path),
@@ -69,6 +135,10 @@ def inspect_docx(docx_path: Path) -> dict:
         "xml_drawings": xml.count("<w:drawing"),
         "xml_omath": xml.count("<m:oMath"),
         "xml_omath_para": xml.count("<m:oMathPara"),
+        "paragraph_count": len(paragraphs),
+        "paragraph_preview": paragraphs[:12],
+        "obvious_duplicate_paragraphs": len(duplicate_examples),
+        "duplicate_examples": duplicate_examples,
     }
 
 
@@ -103,7 +173,7 @@ def main() -> int:
     shutil.rmtree(output_dir, ignore_errors=True)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    def run_once(device: str):
+    def run_once(device: str, disable_formula: bool = False):
         command = [
             str(paddle_python),
             str(runner),
@@ -114,6 +184,8 @@ def main() -> int:
             "--output_dir",
             str(output_dir),
         ]
+        if disable_formula:
+            command.append("--disable-formula")
         print(f"[Info] repo_root={repo_root}")
         print(f"[Info] input_pdf={input_pdf}")
         print(f"[Info] output_dir={output_dir}")
@@ -128,13 +200,36 @@ def main() -> int:
         )
 
     crash_return_codes = {3221225477, -1073741819}
-    result = run_once(args.device)
-    final_device = args.device
-    if args.device == "gpu:0" and result.returncode in crash_return_codes:
-        print(f"[Warning] Native GPU crash detected ({result.returncode}). Retrying with CPU.")
-        result = run_once("cpu")
-        final_device = "cpu"
+    attempts: list[tuple[str, bool]] = [(args.device, False)]
+    if args.device == "gpu:0":
+        attempts.extend([("cpu", False), ("cpu", True)])
+    else:
+        attempts.append((args.device, True))
 
+    result = None
+    final_device = args.device
+    final_disable_formula = False
+    attempt_log: list[dict] = []
+    for index, (device, disable_formula) in enumerate(attempts):
+        result = run_once(device, disable_formula=disable_formula)
+        attempt_log.append(
+            {
+                "device": device,
+                "disable_formula": disable_formula,
+                "returncode": result.returncode,
+            }
+        )
+        final_device = device
+        final_disable_formula = disable_formula
+        if result.returncode not in crash_return_codes:
+            break
+        if index < len(attempts) - 1:
+            print(
+                f"[Warning] Native crash detected ({result.returncode}). "
+                f"Retrying with device={attempts[index + 1][0]} disable_formula={attempts[index + 1][1]}."
+            )
+
+    assert result is not None
     stdout_text = decode_output(result.stdout).strip()
     stderr_text = decode_output(result.stderr).strip()
 
@@ -160,6 +255,8 @@ def main() -> int:
         "success": result.returncode == 0 and bool(docx_files),
         "returncode": result.returncode,
         "final_device": final_device,
+        "final_disable_formula": final_disable_formula,
+        "attempts": attempt_log,
         "parsed_result": parsed_result,
         "docx_files": [str(path) for path in docx_files],
         "stats": stats,

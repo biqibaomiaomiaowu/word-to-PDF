@@ -4,6 +4,7 @@ import subprocess
 import sys
 import os
 from ..utils.paddle_runtime import check_paddle_available, get_paddle_capabilities
+from ..services.word_com import get_word_com_availability
 
 router = APIRouter()
 
@@ -32,6 +33,7 @@ async def get_capabilities() -> Dict[str, Any]:
     paddle_avail, paddle_reason = check_paddle_available(use_cache=True)
     paddle_structure_avail, paddle_structure_reason = check_paddle_available(use_cache=True, require_structure=True)
     paddle_caps = get_paddle_capabilities(use_cache=True)
+    word_com_available, word_com_reason = get_word_com_availability()
     return {
         "paddle_available": paddle_avail,
         "paddle_reason_if_unavailable": paddle_reason if not paddle_avail else None,
@@ -42,8 +44,11 @@ async def get_capabilities() -> Dict[str, Any]:
         "paddlex_cache_home": paddle_caps.get("paddlex_cache_home"),
         "pdf2docx_available": is_pdf2docx_available(),
         "libreoffice_available": is_libreoffice_available(),
+        "word_com_available": word_com_available,
+        "word_com_reason_if_unavailable": word_com_reason if not word_com_available else None,
         "word_ad_removal_available": True,
         "pdf_ad_removal_available": True,
         "supported_conversion_types": ["word_to_pdf", "pdf_to_word"],
-        "supported_converter_modes": ["auto", "pdf2docx", "paddle"]
+        "supported_converter_modes": ["auto", "pdf2docx", "paddle"],
+        "supported_word_to_pdf_engines": ["auto", "libreoffice", "word"],
     }

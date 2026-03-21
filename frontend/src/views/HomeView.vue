@@ -2,9 +2,9 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useHistoryStore } from '@/stores/history'
 import api from '@/services/api'
-import UploadZone from '@/components/UploadZone.vue'
-import TaskStatus from '@/components/TaskStatus.vue'
-import HistoryList from '@/components/HistoryList.vue'
+import UploadZone from '@/components/UploadZoneV2.vue'
+import TaskStatus from '@/components/TaskStatusV2.vue'
+import HistoryList from '@/components/HistoryListV2.vue'
 
 const historyStore = useHistoryStore()
 const currentTasks = ref([])

@@ -37,7 +37,7 @@ class PDFToWordPaddleService:
         paddle_env = build_paddle_env()
         crash_return_codes = {3221225477, -1073741819}
 
-        def _run_runner(device: str | None):
+        def _run_runner(device: str | None, disable_formula: bool = False):
             cmd = [
                 python_exe,
                 runner_script,
@@ -46,6 +46,8 @@ class PDFToWordPaddleService:
             ]
             if device:
                 cmd.extend(["--device", device])
+            if disable_formula:
+                cmd.append("--disable-formula")
             return subprocess.run(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -58,15 +60,22 @@ class PDFToWordPaddleService:
             logger.info(f"Starting PaddleOCR subprocess for {input_path} -> {output_dir}")
 
             try:
-                result = _run_runner(None)
-                if result.returncode in crash_return_codes:
-                    logger.warning(
-                        "Paddle subprocess crashed with native return code %s. Retrying on CPU.",
-                        result.returncode,
-                    )
-                    result = _run_runner("cpu")
+                attempts: list[tuple[str | None, bool]] = [(None, False), ("cpu", False), ("cpu", True)]
+                result = None
+                for index, (device, disable_formula) in enumerate(attempts):
+                    result = _run_runner(device, disable_formula=disable_formula)
+                    if result.returncode not in crash_return_codes:
+                        break
+                    if index < len(attempts) - 1:
+                        logger.warning(
+                            "Paddle subprocess crashed with native return code %s. Retrying with device=%s disable_formula=%s.",
+                            result.returncode,
+                            attempts[index + 1][0] or "auto",
+                            attempts[index + 1][1],
+                        )
 
                 # We expect the last line (or all of stdout) to be a JSON string
+                assert result is not None
                 output_str = _decode_output(result.stdout).strip()
                 stderr_str = _decode_output(result.stderr).strip()
                 json_start = output_str.rfind("{")

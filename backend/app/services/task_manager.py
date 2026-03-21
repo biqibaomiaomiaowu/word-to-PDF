@@ -9,6 +9,9 @@ from ..core.config import settings
 from .libreoffice import LibreOfficeService
 from .pdf_to_word_pdf2docx import PDFToWordService
 from .pdf_to_word_paddle import PDFToWordPaddleService
+from .docx_formula_normalizer import DocxFormulaNormalizer
+from .word_com import WordComService, get_word_com_availability
+from .word_to_pdf_router import select_word_to_pdf_engine
 from .pdf_route_selector import PDFRouteSelector
 from ..models.schemas import TaskStatus, TaskInfo, ConversionType, ConverterMode
 from ..utils.pdf_processor import detect_and_remove_ad, detect_and_remove_ad_pre_conversion
@@ -53,7 +56,7 @@ class TaskManager:
             input_filepath=input_filepath,
             output_dir=task_output_dir,
             remove_ad=remove_ad,
-            converter_mode=converter_mode if conversion_type == ConversionType.PDF_TO_WORD else ConverterMode.AUTO
+            converter_mode=converter_mode
         )
 
         self.tasks[task_id] = task_info
@@ -94,12 +97,16 @@ class TaskManager:
         try:
             conversion_input_path = task_info.input_filepath
             temp_cleaned_docx = None
+            temp_formula_safe_docx = None
             output_filepath = None
+            formula_preprocess_note = None
 
             logger.info(f"Processing task {task_id} with conversion type {task_info.conversion_type}")
 
             if task_info.conversion_type == ConversionType.WORD_TO_PDF:
                 task_info.ad_removal_enabled = task_info.remove_ad
+                source_export_input_path = conversion_input_path
+                word_export_input_path = source_export_input_path
 
                 # Stage 1: DOCX Pre-cleaning
                 if task_info.remove_ad:
@@ -120,11 +127,100 @@ class TaskManager:
                         logger.warning(f"DOCX pre-cleaning failed for task {task_id}: {docx_err}")
                         task_info.ad_remove_error = f"DOCX Stage Error: {docx_err}"
 
-                # Execute conversion
-                output_filepath = await LibreOfficeService.convert_to_pdf(
+                decision = select_word_to_pdf_engine(
                     input_path=conversion_input_path,
-                    output_dir=task_info.output_dir
+                    converter_mode=task_info.converter_mode,
                 )
+                task_info.primary_converter = decision.primary_engine
+                task_info.converter_used = decision.primary_engine
+                task_info.route_reason = decision.route_reason
+
+                source_export_input_path = conversion_input_path
+                word_export_input_path = source_export_input_path
+                if decision.formula_risk and source_export_input_path.lower().endswith(".docx"):
+                    temp_formula_safe_docx = os.path.join(settings.OUTPUT_DIR, f"{task_id}_formula_safe.docx")
+                    try:
+                        normalization_report = DocxFormulaNormalizer.flatten_axmath_to_images(
+                            source_export_input_path,
+                            temp_formula_safe_docx,
+                        )
+                        if normalization_report.normalized:
+                            word_export_input_path = normalization_report.output_path
+                            formula_preprocess_note = (
+                                "Flattened "
+                                f"{normalization_report.flattened_axmath_count} AxMath objects "
+                                "to preview images before Microsoft Word export."
+                            )
+                            logger.info(
+                                "Formula normalization completed for task %s: %s",
+                                task_id,
+                                formula_preprocess_note,
+                            )
+                        else:
+                            temp_formula_safe_docx = None
+                    except Exception as formula_err:
+                        temp_formula_safe_docx = None
+                        logger.warning(
+                            "Formula normalization failed for task %s: %s",
+                            task_id,
+                            formula_err,
+                        )
+
+                if formula_preprocess_note:
+                    task_info.route_reason = f"{formula_preprocess_note} | {task_info.route_reason}"
+
+                logger.info(
+                    f"Word->PDF routing decision for task {task_id}: "
+                    f"mode={task_info.converter_mode.value}, primary={decision.primary_engine}, "
+                    f"reason={decision.route_reason}"
+                )
+
+                async def perform_word_to_pdf_conversion(engine_type: str, input_file: str, out_dir: str):
+                    if engine_type == ConverterMode.WORD.value:
+                        return await WordComService.convert_to_pdf(word_export_input_path, out_dir)
+                    return await LibreOfficeService.convert_to_pdf(source_export_input_path, out_dir)
+
+                try:
+                    output_filepath = await perform_word_to_pdf_conversion(
+                        decision.primary_engine,
+                        conversion_input_path,
+                        task_info.output_dir,
+                    )
+                except Exception as primary_err:
+                    if task_info.converter_mode != ConverterMode.AUTO or not decision.fallback_engine:
+                        task_info.error_code = "conversion_failed"
+                        raise
+
+                    if decision.fallback_engine == ConverterMode.WORD.value:
+                        word_available, word_reason = get_word_com_availability()
+                        if not word_available:
+                            task_info.error_code = "conversion_failed"
+                            raise Exception(
+                                f"Primary export failed ({primary_err}) and Microsoft Word fallback is unavailable: {word_reason}"
+                            )
+
+                    task_info.fallback_attempted = True
+                    task_info.fallback_reason = f"{decision.primary_engine} exception: {primary_err}"
+                    fallback_out_dir = os.path.join(task_info.output_dir, "fallback_pdf")
+                    os.makedirs(fallback_out_dir, exist_ok=True)
+
+                    try:
+                        output_filepath = await perform_word_to_pdf_conversion(
+                            decision.fallback_engine,
+                            conversion_input_path,
+                            fallback_out_dir,
+                        )
+                        task_info.converter_used = decision.fallback_engine
+                        task_info.route_reason = (
+                            f"{task_info.route_reason} | Auto fallback to "
+                            f"{decision.fallback_engine} after {decision.primary_engine} failed: {primary_err}"
+                        )
+                    except Exception as fallback_err:
+                        task_info.error_code = "conversion_failed"
+                        raise Exception(
+                            f"Primary export failed ({primary_err}) and fallback "
+                            f"{decision.fallback_engine} also failed ({fallback_err})."
+                        )
 
                 # Stage 2: PDF Fallback Cleaning
                 if task_info.remove_ad and not task_info.ad_removed:
@@ -279,6 +375,8 @@ class TaskManager:
                     os.remove(task_info.input_filepath)
                 if temp_cleaned_docx and os.path.exists(temp_cleaned_docx):
                     os.remove(temp_cleaned_docx)
+                if temp_formula_safe_docx and os.path.exists(temp_formula_safe_docx):
+                    os.remove(temp_formula_safe_docx)
             except Exception as e:
                 logger.warning(f"Failed to remove temp files for task {task_id}: {e}")
 

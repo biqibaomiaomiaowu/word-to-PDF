@@ -17,6 +17,8 @@ class ConverterMode(str, Enum):
     AUTO = "auto"
     PDF2DOCX = "pdf2docx"
     PADDLE = "paddle"
+    LIBREOFFICE = "libreoffice"
+    WORD = "word"
 
 class TaskInfo(BaseModel):
     task_id: str

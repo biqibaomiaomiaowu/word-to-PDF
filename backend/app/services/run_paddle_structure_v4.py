@@ -85,6 +85,165 @@ def _parse_html_table(html: str) -> list[list[str]]:
         return []
 
 
+def _normalize_space(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").replace("\xa0", " ")).strip()
+
+
+def _project_compact_prefix(original: str, compact_prefix: str) -> str:
+    if not original or not compact_prefix:
+        return ""
+
+    output: list[str] = []
+    compact_index = 0
+    previous_was_space = False
+    for ch in original:
+        if ch.isspace():
+            if output and not previous_was_space and compact_index < len(compact_prefix):
+                output.append(" ")
+                previous_was_space = True
+            continue
+
+        if compact_index >= len(compact_prefix):
+            break
+
+        expected = compact_prefix[compact_index]
+        if ch != expected:
+            continue
+
+        output.append(ch)
+        compact_index += 1
+        previous_was_space = False
+        if compact_index == len(compact_prefix):
+            break
+
+    return "".join(output).strip()
+
+
+def _collapse_full_repetition(text: str) -> str:
+    compact = _normalize_space(text)
+    if not compact:
+        return ""
+
+    max_unit = len(compact) // 2
+    for unit_len in range(1, max_unit + 1):
+        if len(compact) % unit_len != 0:
+            continue
+        unit = compact[:unit_len]
+        repeat_count = len(compact) // unit_len
+        if repeat_count >= 2 and unit * repeat_count == compact:
+            return unit.strip()
+
+    squashed = re.sub(r"\s+", "", compact)
+    max_unit = len(squashed) // 2
+    for unit_len in range(2, max_unit + 1):
+        if len(squashed) % unit_len != 0:
+            continue
+        unit = squashed[:unit_len]
+        repeat_count = len(squashed) // unit_len
+        if repeat_count >= 2 and unit * repeat_count == squashed:
+            projected = _project_compact_prefix(compact, unit)
+            return projected or unit.strip()
+    return compact
+
+
+def _normalize_compare_text(text: str) -> str:
+    normalized = _normalize_space(text)
+    normalized = re.sub(r"[\s\u3000]+", "", normalized)
+    return normalized.casefold()
+
+
+def _normalize_signature_text(text: str) -> str:
+    normalized = _normalize_compare_text(text)
+    normalized = re.sub(r"[^\w\u4e00-\u9fff]+", "", normalized)
+    return normalized
+
+
+def _clean_text_content(text: str) -> str:
+    text = unescape(text or "")
+    if not text:
+        return ""
+
+    cleaned_lines: list[str] = []
+    for raw_line in re.split(r"[\r\n]+", text):
+        line = _collapse_full_repetition(raw_line)
+        if not line:
+            continue
+        if cleaned_lines and _normalize_compare_text(cleaned_lines[-1]) == _normalize_compare_text(line):
+            continue
+        cleaned_lines.append(line)
+
+    merged = "\n".join(cleaned_lines)
+    return _collapse_full_repetition(merged)
+
+
+def _bbox_overlap_ratio(box_a: list[int], box_b: list[int]) -> float:
+    if not box_a or not box_b:
+        return 0.0
+
+    ax0, ay0, ax1, ay1 = box_a
+    bx0, by0, bx1, by1 = box_b
+    inter_x0 = max(ax0, bx0)
+    inter_y0 = max(ay0, by0)
+    inter_x1 = min(ax1, bx1)
+    inter_y1 = min(ay1, by1)
+    inter_w = max(0, inter_x1 - inter_x0)
+    inter_h = max(0, inter_y1 - inter_y0)
+    if inter_w == 0 or inter_h == 0:
+        return 0.0
+
+    inter_area = inter_w * inter_h
+    area_a = max(1, (ax1 - ax0) * (ay1 - ay0))
+    area_b = max(1, (bx1 - bx0) * (by1 - by0))
+    return inter_area / float(min(area_a, area_b))
+
+
+def _bbox_center(box: list[int]) -> tuple[float, float]:
+    if not box:
+        return 0.0, 0.0
+    return (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
+
+
+def _deduplicate_page_blocks(blocks: list[dict]) -> list[dict]:
+    if not blocks:
+        return []
+
+    kept: list[dict] = []
+    for block in blocks:
+        label = block.get("type")
+        norm = block.get("normalized_content", "")
+        signature = block.get("signature_content", "") or norm
+
+        if label in {"image", "chart", "seal", "table", "formula"}:
+            kept.append(block)
+            continue
+
+        if not signature:
+            kept.append(block)
+            continue
+
+        is_duplicate = False
+        for previous in reversed(kept[-16:]):
+            prev_signature = previous.get("signature_content", "") or previous.get("normalized_content", "")
+            if prev_signature != signature:
+                continue
+
+            prev_box = previous.get("bbox") or [0, 0, 0, 0]
+            curr_box = block.get("bbox") or [0, 0, 0, 0]
+            overlap = _bbox_overlap_ratio(prev_box, curr_box)
+            _, prev_cy = _bbox_center(prev_box)
+            _, curr_cy = _bbox_center(curr_box)
+            same_band = abs(prev_box[1] - curr_box[1]) <= 24
+            nearby = abs(prev_cy - curr_cy) <= 64
+            if overlap >= 0.6 or same_band or (len(signature) >= 8 and nearby):
+                is_duplicate = True
+                break
+
+        if not is_duplicate:
+            kept.append(block)
+
+    return kept
+
+
 def _find_mml2omml_xsl() -> Path | None:
     candidates = [
         os.environ.get("MML2OMML_XSL_PATH"),
@@ -160,11 +319,15 @@ def _extract_page_blocks(page_result) -> list[dict]:
             image_obj = image_data.get("img")
         if label in {"image", "chart", "seal"} and image_path:
             content = image_path
+        elif label not in {"table", "formula"}:
+            content = _clean_text_content(content)
 
         blocks.append(
             {
                 "type": label,
                 "content": content,
+                "normalized_content": _normalize_compare_text(content) if label not in {"image", "chart", "seal", "table", "formula"} else "",
+                "signature_content": _normalize_signature_text(content) if label not in {"image", "chart", "seal", "table", "formula"} else "",
                 "config": styles.get(label, {"size": 12, "indent": True}),
                 "bbox": _normalize_bbox(getattr(block, "bbox", None)),
                 "page_index": page_index,
@@ -234,7 +397,7 @@ def _normalize_formula_text(content: str) -> str:
 
 
 _INLINE_MATH_PATTERN = re.compile(
-    r"(\$[^$\n]+\$|\d+\s*/\s*\d+|P\([^)]+\)|[A-Za-z]\s*\^\s*[0-9A-Za-z]+|[A-Za-z]\s*_\s*[0-9A-Za-z]+|√\s*[0-9A-Za-z一-龥]+)"
+    r"(\$[^$\n]+\$|=\s*\d+\s*/\s*\d+|\d+\s*/\s*\d+|P\([^)]+\)|[A-Za-z]\d{2,}|[A-Za-z]\s*\^\s*[0-9A-Za-z]+|[A-Za-z]\s*_\s*[0-9A-Za-z]+|\u221A\s*[0-9A-Za-z().+\-]+)"
 )
 
 
@@ -256,7 +419,14 @@ def _to_latex_expression(token: str) -> str | None:
     if compact.startswith("P(") and compact.endswith(")"):
         return compact
 
-    if compact.startswith("√"):
+    if compact.startswith("="):
+        compact = compact[1:]
+        fraction_match = re.fullmatch(r"(\d+)/(\d+)", compact)
+        if fraction_match:
+            numerator, denominator = fraction_match.groups()
+            return rf"\frac{{{numerator}}}{{{denominator}}}"
+
+    if compact.startswith("\u221A"):
         radicand = compact[1:]
         if radicand:
             return rf"\sqrt{{{radicand}}}"
@@ -271,6 +441,11 @@ def _to_latex_expression(token: str) -> str | None:
         base, subscript = sub_match.groups()
         return rf"{base}_{{{subscript}}}"
 
+    digit_sub_match = re.fullmatch(r"([A-Za-z])(\d{2,})", compact)
+    if digit_sub_match:
+        base, subscript = digit_sub_match.groups()
+        return rf"{base}_{{{subscript}}}"
+
     return None
 
 
@@ -279,9 +454,15 @@ def _render_inline_math(paragraph, content: str, config: dict) -> bool:
     if not content:
         return False
 
+    matches = list(_INLINE_MATH_PATTERN.finditer(content))
+    if not matches:
+        run = paragraph.add_run(content)
+        _apply_run_style(run, config)
+        return False
+
     cursor = 0
     inserted_math = False
-    for match in _INLINE_MATH_PATTERN.finditer(content):
+    for match in matches:
         start, end = match.span()
         if start > cursor:
             run = paragraph.add_run(content[cursor:start])
@@ -300,10 +481,6 @@ def _render_inline_math(paragraph, content: str, config: dict) -> bool:
 
     if cursor < len(content):
         run = paragraph.add_run(content[cursor:])
-        _apply_run_style(run, config)
-
-    if cursor == 0:
-        run = paragraph.add_run(content)
         _apply_run_style(run, config)
 
     return inserted_math
@@ -365,10 +542,17 @@ def _add_table(doc, html: str):
     table = doc.add_table(rows=0, cols=max_cols)
     table.style = "Table Grid"
     cell_config = {"size": 10}
+    previous_row_signature: tuple[str, ...] | None = None
     for row_cells in rows:
+        cleaned_cells = [_clean_text_content(cell) for cell in row_cells]
+        row_signature = tuple(_normalize_compare_text(cell) for cell in cleaned_cells)
+        if previous_row_signature is not None and row_signature == previous_row_signature and any(row_signature):
+            continue
+        previous_row_signature = row_signature
+
         row = table.add_row().cells
         for idx in range(max_cols):
-            cell_text = row_cells[idx].strip() if idx < len(row_cells) else ""
+            cell_text = cleaned_cells[idx].strip() if idx < len(cleaned_cells) else ""
             paragraph = row[idx].paragraphs[0]
             _render_inline_math(paragraph, cell_text, cell_config)
             _apply_paragraph_style(paragraph, cell_config)
@@ -376,7 +560,7 @@ def _add_table(doc, html: str):
 
 
 def _add_text_block(doc, block: dict):
-    content = unescape((block.get("content") or "").strip())
+    content = _clean_text_content(block.get("content") or "")
     if not content:
         return False
 
@@ -391,6 +575,15 @@ def _add_text_block(doc, block: dict):
     return True
 
 
+def _should_skip_emitting_text(block: dict, recent_signatures: list[tuple[str, str]]):
+    norm = block.get("signature_content") or block.get("normalized_content", "")
+    label = block.get("type", "")
+    if not norm or label in {"table", "formula", "image", "chart", "seal"}:
+        return False
+
+    return any(previous_norm == norm for _, previous_norm in recent_signatures)
+
+
 def _should_insert_soft_break(blocks: list[dict]) -> bool:
     for block in blocks:
         label = block.get("type")
@@ -401,13 +594,12 @@ def _should_insert_soft_break(blocks: list[dict]) -> bool:
     return False
 
 
-def _build_structure_engine(device: str, enable_formula: bool):
+def _build_structure_engine(device: str, enable_formula: bool, enable_chart_recognition: bool = False):
     from paddleocr import PPStructureV3
 
     kwargs = {
         "device": device,
         "layout_detection_model_name": "PP-DocLayout_plus-L",
-        "chart_recognition_model_name": "PP-Chart2Table",
         "text_detection_model_name": "PP-OCRv5_server_det",
         "text_recognition_model_name": "PP-OCRv5_server_rec",
         "table_classification_model_name": "PP-LCNet_x1_0_table_cls",
@@ -420,17 +612,24 @@ def _build_structure_engine(device: str, enable_formula: bool):
         "use_textline_orientation": False,
         "use_table_recognition": True,
         "use_formula_recognition": enable_formula,
-        "use_chart_recognition": False,
+        "use_chart_recognition": enable_chart_recognition,
         "use_seal_recognition": False,
         "use_region_detection": False,
     }
     if enable_formula:
         kwargs["formula_recognition_model_name"] = "PP-FormulaNet_plus-L"
+    if enable_chart_recognition:
+        kwargs["chart_recognition_model_name"] = "PP-Chart2Table"
 
     return PPStructureV3(**kwargs)
 
 
-def run_paddle_structure(input_path: str, output_dir: str, requested_device: str | None = None):
+def run_paddle_structure(
+    input_path: str,
+    output_dir: str,
+    requested_device: str | None = None,
+    disable_formula: bool = False,
+):
     try:
         from docx import Document
     except ImportError as exc:
@@ -443,8 +642,8 @@ def run_paddle_structure(input_path: str, output_dir: str, requested_device: str
 
     try:
         device = _resolve_device(requested_device)
-        formula_enabled = _has_cached_model("PP-FormulaNet_plus-L")
-        engine = _build_structure_engine(device, formula_enabled)
+        formula_enabled = _has_cached_model("PP-FormulaNet_plus-L") and not disable_formula
+        engine = _build_structure_engine(device, formula_enabled, enable_chart_recognition=False)
         results = engine.predict(
             input_path,
             use_doc_orientation_classify=False,
@@ -461,9 +660,10 @@ def run_paddle_structure(input_path: str, output_dir: str, requested_device: str
         merged_doc = Document()
         first_page = True
         for page_result in results:
-            blocks = _extract_page_blocks(page_result)
+            blocks = _deduplicate_page_blocks(_extract_page_blocks(page_result))
             if not blocks:
                 continue
+            recent_text_signatures: list[tuple[str, str]] = []
 
             if not first_page and _should_insert_soft_break(blocks):
                 merged_doc.add_paragraph()
@@ -485,7 +685,17 @@ def run_paddle_structure(input_path: str, output_dir: str, requested_device: str
                     if _add_picture(merged_doc, block, page_width):
                         continue
 
-                _add_text_block(merged_doc, block)
+                if _should_skip_emitting_text(block, recent_text_signatures):
+                    continue
+
+                if _add_text_block(merged_doc, block):
+                    recent_text_signatures.append(
+                        (
+                            block.get("type", ""),
+                            block.get("signature_content") or block.get("normalized_content", ""),
+                        )
+                    )
+                    recent_text_signatures = recent_text_signatures[-20:]
 
             first_page = False
 
@@ -519,7 +729,13 @@ if __name__ == "__main__":
     parser.add_argument("--input", required=True, help="Input PDF path")
     parser.add_argument("--output_dir", required=True, help="Output directory path")
     parser.add_argument("--device", choices=["auto", "cpu", "gpu:0"], default="auto", help="Execution device")
+    parser.add_argument("--disable-formula", action="store_true", help="Disable formula recognition for stability fallback")
     args = parser.parse_args()
 
-    result = run_paddle_structure(args.input, args.output_dir, requested_device=args.device)
+    result = run_paddle_structure(
+        args.input,
+        args.output_dir,
+        requested_device=args.device,
+        disable_formula=args.disable_formula,
+    )
     print(json.dumps(result, ensure_ascii=False))
